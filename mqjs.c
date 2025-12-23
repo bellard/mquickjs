@@ -34,10 +34,322 @@
 #include <sys/time.h>
 #include <math.h>
 #include <fcntl.h>
+#include <curl/curl.h>
 
 #include "cutils.h"
 #include "readline_tty.h"
 #include "mquickjs.h"
+
+/* ============================================================ */
+/* fetch() implementation using libcurl                          */
+/* ============================================================ */
+
+typedef struct {
+    char *data;
+    size_t size;
+    size_t capacity;
+} FetchBuffer;
+
+typedef struct {
+    long status;
+    char *status_text;
+    FetchBuffer headers;
+    FetchBuffer body;
+} FetchResponse;
+
+static size_t fetch_write_callback(void *contents, size_t size, size_t nmemb, void *userp)
+{
+    size_t realsize = size * nmemb;
+    FetchBuffer *buf = (FetchBuffer *)userp;
+    
+    if (buf->size + realsize + 1 > buf->capacity) {
+        size_t new_capacity = buf->capacity == 0 ? 4096 : buf->capacity * 2;
+        while (new_capacity < buf->size + realsize + 1)
+            new_capacity *= 2;
+        char *new_data = realloc(buf->data, new_capacity);
+        if (!new_data)
+            return 0;
+        buf->data = new_data;
+        buf->capacity = new_capacity;
+    }
+    
+    memcpy(buf->data + buf->size, contents, realsize);
+    buf->size += realsize;
+    buf->data[buf->size] = '\0';
+    return realsize;
+}
+
+static size_t fetch_header_callback(char *buffer, size_t size, size_t nitems, void *userdata)
+{
+    size_t realsize = size * nitems;
+    FetchBuffer *buf = (FetchBuffer *)userdata;
+    
+    if (buf->size + realsize + 1 > buf->capacity) {
+        size_t new_capacity = buf->capacity == 0 ? 1024 : buf->capacity * 2;
+        while (new_capacity < buf->size + realsize + 1)
+            new_capacity *= 2;
+        char *new_data = realloc(buf->data, new_capacity);
+        if (!new_data)
+            return 0;
+        buf->data = new_data;
+        buf->capacity = new_capacity;
+    }
+    
+    memcpy(buf->data + buf->size, buffer, realsize);
+    buf->size += realsize;
+    buf->data[buf->size] = '\0';
+    return realsize;
+}
+
+static void fetch_buffer_free(FetchBuffer *buf)
+{
+    free(buf->data);
+    buf->data = NULL;
+    buf->size = 0;
+    buf->capacity = 0;
+}
+
+static void fetch_response_free(FetchResponse *resp)
+{
+    free(resp->status_text);
+    fetch_buffer_free(&resp->headers);
+    fetch_buffer_free(&resp->body);
+}
+
+/* Synchronous fetch - returns response object or throws */
+static int do_fetch(const char *url, const char *method, 
+                    const char *body_data, size_t body_len,
+                    struct curl_slist *headers,
+                    FetchResponse *resp)
+{
+    CURL *curl;
+    CURLcode res;
+    
+    memset(resp, 0, sizeof(*resp));
+    
+    curl = curl_easy_init();
+    if (!curl)
+        return -1;
+    
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, fetch_write_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp->body);
+    curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, fetch_header_callback);
+    curl_easy_setopt(curl, CURLOPT_HEADERDATA, &resp->headers);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "mquickjs-fetch/1.0");
+    
+    if (headers)
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    
+    if (method && strcmp(method, "GET") != 0) {
+        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, method);
+        if (body_data && body_len > 0) {
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body_data);
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body_len);
+        }
+    }
+    
+    res = curl_easy_perform(curl);
+    
+    if (res != CURLE_OK) {
+        resp->status_text = strdup(curl_easy_strerror(res));
+        curl_easy_cleanup(curl);
+        return -1;
+    }
+    
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &resp->status);
+    curl_easy_cleanup(curl);
+    
+    return 0;
+}
+
+/* Parse headers string into a JS object */
+static JSValue parse_headers_to_object(JSContext *ctx, const char *headers_str)
+{
+    JSValue hobj = JS_NewObject(ctx);
+    JSGCRef hobj_ref;
+    const char *p = headers_str;
+    
+    JS_PUSH_VALUE(ctx, hobj);
+    
+    while (*p) {
+        const char *line_end = strchr(p, '\n');
+        if (!line_end)
+            line_end = p + strlen(p);
+        
+        const char *colon = strchr(p, ':');
+        if (colon && colon < line_end) {
+            /* Extract header name */
+            size_t name_len = colon - p;
+            char *name = malloc(name_len + 1);
+            memcpy(name, p, name_len);
+            name[name_len] = '\0';
+            
+            /* Convert to lowercase */
+            for (size_t i = 0; i < name_len; i++)
+                name[i] = tolower((unsigned char)name[i]);
+            
+            /* Skip ": " and extract value */
+            const char *value_start = colon + 1;
+            while (value_start < line_end && (*value_start == ' ' || *value_start == '\t'))
+                value_start++;
+            
+            const char *value_end = line_end;
+            while (value_end > value_start && (value_end[-1] == '\r' || value_end[-1] == '\n'))
+                value_end--;
+            
+            size_t value_len = value_end - value_start;
+            JSValue value = JS_NewStringLen(ctx, value_start, value_len);
+            JS_SetPropertyStr(ctx, hobj_ref.val, name, value);
+            
+            free(name);
+        }
+        
+        p = (*line_end) ? line_end + 1 : line_end;
+    }
+    
+    JS_POP_VALUE(ctx, hobj);
+    return hobj;
+}
+
+/* Create Response object */
+static JSValue create_response_object(JSContext *ctx, FetchResponse *resp)
+{
+    JSValue robj = JS_NewObject(ctx);
+    JSGCRef robj_ref;
+    
+    JS_PUSH_VALUE(ctx, robj);
+    
+    /* status */
+    JS_SetPropertyStr(ctx, robj_ref.val, "status", JS_NewInt32(ctx, (int)resp->status));
+    
+    /* ok */
+    JS_SetPropertyStr(ctx, robj_ref.val, "ok", JS_NewBool(resp->status >= 200 && resp->status < 300));
+    
+    /* statusText */
+    char status_text[32];
+    snprintf(status_text, sizeof(status_text), "%ld", resp->status);
+    JS_SetPropertyStr(ctx, robj_ref.val, "statusText", JS_NewString(ctx, status_text));
+    
+    /* headers */
+    JSValue headers = parse_headers_to_object(ctx, resp->headers.data ? resp->headers.data : "");
+    JS_SetPropertyStr(ctx, robj_ref.val, "headers", headers);
+    
+    /* body (as text) */
+    JS_SetPropertyStr(ctx, robj_ref.val, "body", 
+                      JS_NewStringLen(ctx, resp->body.data ? resp->body.data : "", resp->body.size));
+    
+    JS_POP_VALUE(ctx, robj);
+    return robj;
+}
+
+/* JS fetch(url, options?) - synchronous version */
+static JSValue js_fetch(JSContext *ctx, JSValue *this_val, int argc, JSValue *argv)
+{
+    JSCStringBuf url_buf, method_buf, body_buf;
+    const char *url;
+    const char *method = "GET";
+    const char *body_data = NULL;
+    size_t body_len = 0;
+    struct curl_slist *headers = NULL;
+    FetchResponse resp;
+    JSValue result;
+    
+    if (argc < 1)
+        return JS_ThrowTypeError(ctx, "fetch requires a URL argument");
+    
+    url = JS_ToCString(ctx, argv[0], &url_buf);
+    if (!url)
+        return JS_EXCEPTION;
+    
+    /* Parse options if provided */
+    if (argc >= 2 && !JS_IsUndefined(argv[1]) && !JS_IsNull(argv[1])) {
+        JSValue options = argv[1];
+        
+        /* method */
+        JSValue method_val = JS_GetPropertyStr(ctx, options, "method");
+        if (!JS_IsUndefined(method_val)) {
+            method = JS_ToCString(ctx, method_val, &method_buf);
+        }
+        
+        /* body */
+        JSValue body_val = JS_GetPropertyStr(ctx, options, "body");
+        if (!JS_IsUndefined(body_val) && !JS_IsNull(body_val)) {
+            body_data = JS_ToCStringLen(ctx, &body_len, body_val, &body_buf);
+        }
+        
+        /* headers */
+        JSValue headers_val = JS_GetPropertyStr(ctx, options, "headers");
+        if (!JS_IsUndefined(headers_val) && !JS_IsNull(headers_val)) {
+            /* Iterate through header object properties */
+            /* For simplicity, we handle Content-Type specially */
+            JSValue ct = JS_GetPropertyStr(ctx, headers_val, "Content-Type");
+            if (!JS_IsUndefined(ct)) {
+                JSCStringBuf ct_buf;
+                const char *ct_str = JS_ToCString(ctx, ct, &ct_buf);
+                if (ct_str) {
+                    char header_line[256];
+                    snprintf(header_line, sizeof(header_line), "Content-Type: %s", ct_str);
+                    headers = curl_slist_append(headers, header_line);
+                }
+            }
+            JSValue auth = JS_GetPropertyStr(ctx, headers_val, "Authorization");
+            if (!JS_IsUndefined(auth)) {
+                JSCStringBuf auth_buf;
+                const char *auth_str = JS_ToCString(ctx, auth, &auth_buf);
+                if (auth_str) {
+                    char header_line[512];
+                    snprintf(header_line, sizeof(header_line), "Authorization: %s", auth_str);
+                    headers = curl_slist_append(headers, header_line);
+                }
+            }
+            JSValue accept = JS_GetPropertyStr(ctx, headers_val, "Accept");
+            if (!JS_IsUndefined(accept)) {
+                JSCStringBuf accept_buf;
+                const char *accept_str = JS_ToCString(ctx, accept, &accept_buf);
+                if (accept_str) {
+                    char header_line[256];
+                    snprintf(header_line, sizeof(header_line), "Accept: %s", accept_str);
+                    headers = curl_slist_append(headers, header_line);
+                }
+            }
+        }
+    }
+    
+    /* Perform the fetch */
+    if (do_fetch(url, method, body_data, body_len, headers, &resp) < 0) {
+        if (headers)
+            curl_slist_free_all(headers);
+        const char *err = resp.status_text ? resp.status_text : "fetch failed";
+        result = JS_ThrowInternalError(ctx, "fetch error: %s", err);
+        fetch_response_free(&resp);
+        return result;
+    }
+    
+    if (headers)
+        curl_slist_free_all(headers);
+    
+    result = create_response_object(ctx, &resp);
+    fetch_response_free(&resp);
+    
+    return result;
+}
+
+/* ============================================================ */
+/* End of fetch implementation                                   */
+/* ============================================================ */
+
+/* Initialize curl globally - called once at startup */
+static void fetch_global_init(void)
+{
+    static int initialized = 0;
+    if (!initialized) {
+        curl_global_init(CURL_GLOBAL_DEFAULT);
+        initialized = 1;
+    }
+}
 
 static uint8_t *load_file(const char *filename, int *plen);
 static void dump_error(JSContext *ctx);
@@ -592,6 +904,9 @@ int main(int argc, const char **argv)
     JSContext *ctx;
     int i, parse_flags;
     BOOL force_32bit;
+    
+    /* Initialize libcurl for fetch() */
+    fetch_global_init();
     
     mem_size = 16 << 20;
     dump_memory = 0;
