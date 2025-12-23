@@ -13,7 +13,7 @@ MQuickJS only supports a [subset](#javascript-subset-reference) of Javascript cl
 implements a **stricter mode** where some error prone or inefficient
 Javascript constructs are forbidden.
 
-Although MQuickJS shares many code with QuickJS, it internals are
+Although MQuickJS shares many code with QuickJS, its internals are
 different in order to consume less memory. In particular, it relies on
 a tracing garbage collector, the VM does not use the CPU stack and
 strings are stored in UTF-8.
