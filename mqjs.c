@@ -724,7 +724,7 @@ int main(int argc, const char **argv)
         {
             struct timeval tv;
             gettimeofday(&tv, NULL);
-            JS_SetRandomSeed(ctx, ((uint64_t)tv.tv_sec << 32) | tv.tv_usec);
+            JS_SetRandomSeed(ctx, ((uint64_t)tv.tv_sec << 32) ^ tv.tv_usec);
         }
 
         for(i = 0; i < include_count; i++) {
