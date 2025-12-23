@@ -75,7 +75,7 @@ TEST_PROGS=dtoa_test libm_test
 all: $(PROGS)
 
 MQJS_OBJS=mqjs.o readline_tty.o readline.o mquickjs.o dtoa.o libm.o cutils.o
-LIBS=-lm
+LIBS=-lm -lcurl
 
 mqjs$(EXE): $(MQJS_OBJS)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
