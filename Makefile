@@ -25,7 +25,7 @@ endif
 
 HOST_CC=gcc
 CC=$(CROSS_PREFIX)gcc
-CFLAGS=-Wall -g -MMD -Werror -D_GNU_SOURCE -fno-math-errno -fno-trapping-math
+CFLAGS=-Wall -g -MMD -Werror -Wno-error=unused-result -D_GNU_SOURCE -fno-math-errno -fno-trapping-math
 HOST_CFLAGS=-Wall -g -MMD -Werror -D_GNU_SOURCE -fno-math-errno -fno-trapping-math
 ifdef CONFIG_ARM32
 CFLAGS+=-mthumb
