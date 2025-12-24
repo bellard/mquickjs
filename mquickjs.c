@@ -1571,14 +1571,14 @@ static BOOL is_utf8_left_surrogate(const uint8_t *p)
 {
     return p[0] == 0xed &&
         (p[1] >= 0xa0 && p[1] <= 0xaf) &&
-        (p[2] >= 0x80 && p[1] <= 0xbf);
+        (p[2] >= 0x80 && p[2] <= 0xbf);
 }
 
 static BOOL is_utf8_right_surrogate(const uint8_t *p)
 {
     return p[0] == 0xed &&
         (p[1] >= 0xb0 && p[1] <= 0xbf) &&
-        (p[2] >= 0x80 && p[1] <= 0xbf);
+        (p[2] >= 0x80 && p[2] <= 0xbf);
 }
 
 typedef struct {
