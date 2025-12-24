@@ -4,7 +4,7 @@ MicroQuickJS
 ## Introduction
 
 MicroQuickJS (aka. MQuickJS) is a Javascript engine targetted at
-embedded systems. It compiles and runs Javascript programs with as low
+embedded systems. It compiles and runs Javascript programs with as little
 as 10 kB of RAM. The whole engine requires about 100 kB of ROM (ARM
 Thumb-2 code) including the C library. The speed is comparable to
 QuickJS.
@@ -13,7 +13,7 @@ MQuickJS only supports a [subset](#javascript-subset-reference) of Javascript cl
 implements a **stricter mode** where some error prone or inefficient
 Javascript constructs are forbidden.
 
-Although MQuickJS shares many code with QuickJS, it internals are
+Although MQuickJS shares much code with QuickJS, it internals are
 different in order to consume less memory. In particular, it relies on
 a tracing garbage collector, the VM does not use the CPU stack and
 strings are stored in UTF-8.
