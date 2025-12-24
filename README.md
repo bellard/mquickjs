@@ -269,7 +269,7 @@ case, it must be relocated before being flashed into ROM (see
 `JS_LoadBytecode()` and run as normal script with `JS_Run()` (see
 `mqjs.c`).
 
-As with QuickJS, no backward compatibility is garanteed at the
+As with QuickJS, no backward compatibility is guaranteed at the
 bytecode level. Moreover, the bytecode is not verified before being
 executed. Only run JavaScript bytecode from trusted sources.
 
