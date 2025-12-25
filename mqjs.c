@@ -258,21 +258,22 @@ static uint8_t *load_file(const char *filename, int *plen)
     return buf;
 }
 
+static int js_log_err_flag;
+
 static void js_log_func(void *opaque, const void *buf, size_t buf_len)
 {
-    fwrite(buf, 1, buf_len, stdout);
+    fwrite(buf, 1, buf_len, js_log_err_flag ? stderr : stdout);
 }
 
 static void dump_error(JSContext *ctx)
 {
-    char buf[256];
-    size_t len;
-
-    JS_GetErrorStr(ctx, buf, sizeof(buf));
-    fprintf(stderr, "%s%s%s", term_colors[STYLE_ERROR_MSG], buf, term_colors[COLOR_NONE]);
-    len = strlen(buf);
-    if (len == 0 || buf[len - 1] != '\n')
-        fprintf(stderr, "\n");
+    JSValue obj;
+    obj = JS_GetException(ctx);
+    fprintf(stderr, "%s", term_colors[STYLE_ERROR_MSG]);
+    js_log_err_flag++;
+    JS_PrintValueF(ctx, obj, JS_DUMP_LONG);
+    js_log_err_flag--;
+    fprintf(stderr, "%s\n", term_colors[COLOR_NONE]);
 }
 
 static int eval_buf(JSContext *ctx, const char *eval_str, const char *filename, BOOL is_repl, int parse_flags)
@@ -724,7 +725,7 @@ int main(int argc, const char **argv)
         {
             struct timeval tv;
             gettimeofday(&tv, NULL);
-            JS_SetRandomSeed(ctx, ((uint64_t)tv.tv_sec << 32) | tv.tv_usec);
+            JS_SetRandomSeed(ctx, ((uint64_t)tv.tv_sec << 32) ^ tv.tv_usec);
         }
 
         for(i = 0; i < include_count; i++) {

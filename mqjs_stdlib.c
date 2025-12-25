@@ -256,6 +256,7 @@ static const JSPropDef js_typed_array_base_proto[] = {
     JS_CFUNC_DEF("join", 1, js_array_join ),
     JS_CFUNC_DEF("toString", 0, js_array_toString ),
     JS_CFUNC_DEF("subarray", 2, js_typed_array_subarray ),
+    JS_CFUNC_DEF("set", 1, js_typed_array_set ),
     JS_PROP_END,
 };
 

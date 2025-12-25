@@ -274,11 +274,10 @@ int main(int argc, const char **argv)
     val = JS_Eval(ctx, (const char *)buf, buf_len, filename, 0);
     free(buf);
     if (JS_IsException(val)) {
-        size_t len;
-        char buf[256];
-        JS_GetErrorStr(ctx, buf, sizeof(buf));
-        len = strlen(buf);
-        fprintf(stderr, "%s%s", buf, (len == 0 || buf[len - 1] != '\n') ? "\n" : "");
+        JSValue obj;
+        obj = JS_GetException(ctx);
+        JS_PrintValueF(ctx, obj, JS_DUMP_LONG);
+        printf("\n");
         exit(1);
     }
     

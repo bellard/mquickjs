@@ -526,12 +526,14 @@ function test_typed_array()
 
     assert(a.buffer, buffer);
 
-    a = new Uint8Array([1, 2, 3, 4]);
+    a = new Int32Array([1, 2, 3, 4]);
     assert(a.toString(), "1,2,3,4");
-    if (0) {
-        a.set([10, 11], 2);
-        assert(a.toString(), "1,2,10,11");
-    }
+    a.set([10, 11], 2);
+    assert(a.toString(), "1,2,10,11");
+    a.set([12, 13]);
+    assert(a.toString(), "12,13,10,11");
+    a.set(new Int32Array([0, 1]), 1);
+    assert(a.toString(), "12,0,1,11");
 
     a = new Uint8Array([1, 2, 3, 4]);
     a = a.subarray(1, 3);

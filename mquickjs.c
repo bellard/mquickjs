@@ -822,6 +822,9 @@ static void js_vprintf(JSWriteFunc *write_func, void *opaque, const char *fmt, v
                         break;
                     }
                 }
+                /* remove the trailing '\n' if any (used in error output) */
+                if ((flags & PF_ALT_FORM) && len > 0 && buf[len - 1] == '\n')
+                    len--;
                 flags &= ~PF_ZERO_PAD;
             }
             break;
@@ -1473,7 +1476,8 @@ static uint32_t js_string_convert_pos(JSContext *ctx, JSValue val, uint32_t pos,
     for(ce_idx = 0; ce_idx < JS_STRING_POS_CACHE_SIZE; ce_idx++) {
         ce1 = &ctx->string_pos_cache[ce_idx];
         if (ce1->str == val) {
-            d = abs(ce1->str_pos[pos_type] - pos);
+            d = ce1->str_pos[pos_type];
+            d = d >= pos ? d - pos : pos - d;
             if (d < d_min) {
                 d_min = d;
                 ce = ce1;
@@ -2124,32 +2128,12 @@ const char *JS_ToCString(JSContext *ctx, JSValue val, JSCStringBuf *buf)
     return JS_ToCStringLen(ctx, NULL, val, buf);
 }
 
-char *JS_GetErrorStr(JSContext *ctx, char *buf, size_t buf_size)
+JSValue JS_GetException(JSContext *ctx)
 {
-    const char *str;
     JSValue obj;
-    JSObject *p;
-    JSCStringBuf str_buf;
-    JSGCRef obj_ref;
-    
     obj = ctx->current_exception;
-    JS_PUSH_VALUE(ctx, obj);
-    str = JS_ToCString(ctx, obj, &str_buf);
-    JS_POP_VALUE(ctx, obj);
-    if (!str)
-        str = "";
-    pstrcpy(buf, buf_size, str);
-    if (JS_IsError(ctx, obj)) {
-        p = JS_VALUE_TO_PTR(obj);
-        if (p->u.error.stack != JS_NULL) {
-            str = JS_ToCString(ctx, p->u.error.stack, &str_buf);
-            if (str) {
-                pstrcat(buf, buf_size, "\n");
-                pstrcat(buf, buf_size, str);
-            }
-        }
-    }
-    return buf;
+    ctx->current_exception = JS_UNDEFINED;
+    return obj;
 }
 
 static JSValue JS_ToStringCheckObject(JSContext *ctx, JSValue val)
@@ -2157,6 +2141,11 @@ static JSValue JS_ToStringCheckObject(JSContext *ctx, JSValue val)
     if (val == JS_NULL || val == JS_UNDEFINED)
         return JS_ThrowTypeError(ctx, "null or undefined are forbidden");
     return JS_ToString(ctx, val);
+}
+
+static JSValue JS_ThrowTypeErrorNotAnObject(JSContext *ctx)
+{
+    return JS_ThrowTypeError(ctx, "not an object");
 }
 
 /* 'val' must be a string. return TRUE if the string represents a
@@ -3332,7 +3321,7 @@ static JSValue JS_SetPropertyInternal(JSContext *ctx, JSValue this_obj,
     
     /* add the property in the object */
     if (!is_obj)
-        return JS_ThrowTypeError(ctx, "not an object");
+        return JS_ThrowTypeErrorNotAnObject(ctx);
     return JS_DefinePropertyInternal(ctx, this_obj, prop, val, JS_UNDEFINED,
                                      this_obj == ctx->global_obj ? JS_PROP_VARREF : JS_PROP_NORMAL, 0);
 }
@@ -6659,6 +6648,31 @@ static void js_dump_float64(JSContext *ctx, double d)
 
 static void dump_regexp(JSContext *ctx, JSObject *p);
 
+static void js_dump_error(JSContext *ctx, JSObject *p)
+{
+    JSObject *p1;
+    JSProperty *pr;
+    JSValue name;
+    
+    /* find the error name without side effect */
+    p1 = p;
+    if (p->proto != JS_NULL) 
+        p1 = JS_VALUE_TO_PTR(p->proto);
+    pr = find_own_property(ctx, p1, js_get_atom(ctx, JS_ATOM_name));
+    if (!pr || !JS_IsString(ctx, pr->value))
+        name = js_get_atom(ctx, JS_ATOM_Error);
+    else
+        name = pr->value;
+    js_printf(ctx, "%" JSValue_PRI, name);
+    if (p->u.error.message != JS_NULL) {
+        js_printf(ctx, ": %" JSValue_PRI, p->u.error.message);
+    }
+    if (p->u.error.stack != JS_NULL) {
+        /* remove the trailing '\n' if any */
+        js_printf(ctx, "\n%#" JSValue_PRI, p->u.error.stack);
+    }
+}
+
 static void js_dump_object(JSContext *ctx, JSObject *p, int flags)
 {
     if (flags & JS_DUMP_LONG) {
@@ -6675,6 +6689,9 @@ static void js_dump_object(JSContext *ctx, JSObject *p, int flags)
             js_printf(ctx, "function ");
             JS_PrintValueF(ctx, reloc_c_func_name(ctx, ctx->c_function_table[p->u.cfunc.idx].name), JS_DUMP_NOQUOTE);
             js_printf(ctx, "()");
+            break;
+        case JS_CLASS_ERROR:
+            js_dump_error(ctx, p);
             break;
         case JS_CLASS_REGEXP:
             dump_regexp(ctx, p);
@@ -6756,12 +6773,9 @@ static void js_dump_object(JSContext *ctx, JSObject *p, int flags)
                         JSValue class_name = js_find_class_name(ctx, p->class_id);
                         if (!JS_IsNull(class_name))
                             JS_PrintValueF(ctx, class_name, JS_DUMP_NOQUOTE);
+                        js_putchar(ctx, ' ');
                     }
                     js_printf(ctx, "{ ");
-                    if (p->class_id == JS_CLASS_ERROR) {
-                        js_printf(ctx, "message: %"JSValue_PRI"", p->u.error.message);
-                        is_first = FALSE;
-                    }
                 }
                 for(i = 0, j = 0; j < prop_count; i++) {
                     pr = (JSProperty *)&arr->arr[2 + (hash_mask + 1) + 3 * i];
@@ -6828,15 +6842,37 @@ static void dump_string(JSContext *ctx, int sep, const uint8_t *buf, size_t len,
     p_end = buf + len;
     while (p < p_end) {
         c = utf8_get(p, &clen);
-        p += clen;
-        if (use_quote && (c == sep || c == '\\')) {
+        switch(c) {
+        case '\t':
+            c = 't';
+            goto quote;
+        case '\r':
+            c = 'r';
+            goto quote;
+        case '\n':
+            c = 'n';
+            goto quote;
+        case '\b':
+            c = 'b';
+            goto quote;
+        case '\f':
+            c = 'f';
+            goto quote;
+        case '\"':
+        case '\\':
+        quote:
             js_putchar(ctx, '\\');
             js_putchar(ctx, c);
-        } else if (c >= ' ' && c <= 126) {
-            js_putchar(ctx, c);
-        } else {
-            js_printf(ctx, "\\u{%x}", c);
+            break;
+        default:
+            if (c < 32 || (c >= 0xd800 && c < 0xe000)) {
+                js_printf(ctx, "\\u%04x", c);
+            } else {
+                ctx->write_func(ctx->opaque, p, clen);
+            }
+            break;
         }
+        p += clen;
     }
     if (use_quote)
         js_putchar(ctx, sep);
@@ -13608,7 +13644,7 @@ JSValue js_object_defineProperty(JSContext *ctx, JSValue *this_val,
     pdesc = &argv[2];
 
     if (!JS_IsObject(ctx, *pobj))
-        return JS_ThrowTypeError(ctx, "not an object");
+        return JS_ThrowTypeErrorNotAnObject(ctx);
     *pprop = JS_ToPropertyKey(ctx, *pprop);
     if (JS_IsException(*pprop))
         return JS_EXCEPTION;
@@ -13651,7 +13687,7 @@ JSValue js_object_getPrototypeOf(JSContext *ctx, JSValue *this_val,
 {
     JSObject *p;
     if (!JS_IsObject(ctx, argv[0]))
-        return JS_ThrowTypeError(ctx, "not an object");
+        return JS_ThrowTypeErrorNotAnObject(ctx);
     p = JS_VALUE_TO_PTR(argv[0]);
     return p->proto;
 }
@@ -13686,7 +13722,7 @@ JSValue js_object_setPrototypeOf(JSContext *ctx, JSValue *this_val,
     JSValue proto;
     
     if (!JS_IsObject(ctx, argv[0]))
-        return JS_ThrowTypeError(ctx, "not an object");
+        return JS_ThrowTypeErrorNotAnObject(ctx);
     proto = argv[1];
     if (proto != JS_NULL && !JS_IsObject(ctx, proto))
         return JS_ThrowTypeError(ctx, "not a prototype");
@@ -13717,7 +13753,7 @@ JSValue js_object_keys(JSContext *ctx, JSValue *this_val,
     JSGCRef ret_ref;
 
     if (!JS_IsObject(ctx, argv[0]))
-        return JS_ThrowTypeError(ctx, "not an object");
+        return JS_ThrowTypeErrorNotAnObject(ctx);
     p = JS_VALUE_TO_PTR(argv[0]);
 
     if (p->class_id == JS_CLASS_ARRAY) {
@@ -13780,8 +13816,10 @@ JSValue js_object_hasOwnProperty(JSContext *ctx, JSValue *this_val,
     JSValue prop;
     int array_len, idx;
     
+    if (JS_IsNull(*this_val) || JS_IsUndefined(*this_val))
+        return JS_ThrowTypeError(ctx, "cannot convert to object");
     if (!JS_IsObject(ctx, *this_val))
-        return JS_ThrowTypeError(ctx, "not an object");
+        return JS_FALSE; /* XXX: could improve for strings */
     prop = JS_ToPropertyKey(ctx, argv[0]);
     p = JS_VALUE_TO_PTR(*this_val);
     if (p->class_id == JS_CLASS_ARRAY) {
@@ -14131,7 +14169,7 @@ JSValue js_array_join(JSContext *ctx, JSValue *this_val,
     StringBuffer b_s, *b = &b_s;
     
     if (!JS_IsObject(ctx, *this_val))
-        return JS_ThrowTypeError(ctx, "not an object");
+        return JS_ThrowTypeErrorNotAnObject(ctx);
     p = JS_VALUE_TO_PTR(*this_val);
     is_array = (p->class_id == JS_CLASS_ARRAY);
     if (is_array) {
@@ -15169,7 +15207,7 @@ JSValue js_typed_array_subarray(JSContext *ctx, JSValue *this_val,
     /* check offset and count */
     p1 = JS_VALUE_TO_PTR(p->u.typed_array.buffer);
     arr = JS_VALUE_TO_PTR(p1->u.array_buffer.byte_buffer);
-    if (offset + count >= arr->size)
+    if (offset + count > arr->size)
         return JS_ThrowRangeError(ctx, "invalid length");
         
     obj = JS_NewObjectClass(ctx, p->class_id, sizeof(JSTypedArray));
@@ -15181,6 +15219,69 @@ JSValue js_typed_array_subarray(JSContext *ctx, JSValue *this_val,
     p1->u.typed_array.offset = offset;
     p1->u.typed_array.len = count;
     return obj;
+}
+
+JSValue js_typed_array_set(JSContext *ctx, JSValue *this_val,
+                                int argc, JSValue *argv)
+{
+    JSObject *p, *p1;
+    uint32_t dst_len, src_len, i;
+    int offset;
+
+    p = get_typed_array(ctx, *this_val);
+    if (!p)
+        return JS_EXCEPTION;
+    if (argc > 1) {
+        if (JS_ToInt32Sat(ctx, &offset, argv[1]))
+            return JS_EXCEPTION;
+    } else {
+        offset = 0;
+    }
+    if (offset < 0)
+        goto range_error;
+    if (!JS_IsObject(ctx, argv[0]))
+        return JS_ThrowTypeErrorNotAnObject(ctx);
+    p = JS_VALUE_TO_PTR(*this_val);
+    dst_len = p->u.typed_array.len;
+    p1 = JS_VALUE_TO_PTR(argv[0]);
+    if (p1->class_id >= JS_CLASS_UINT8C_ARRAY &&
+        p1->class_id <= JS_CLASS_FLOAT64_ARRAY) {
+        src_len = p1->u.typed_array.len;
+        if (src_len > dst_len || offset > dst_len - src_len)
+            goto range_error;
+        if (p1->class_id == p->class_id) {
+            JSObject *src_buffer, *dst_buffer;
+            JSByteArray *src_arr, *dst_arr;
+            int shift = typed_array_size_log2[p->class_id - JS_CLASS_UINT8C_ARRAY];
+            dst_buffer = JS_VALUE_TO_PTR(p->u.typed_array.buffer);
+            dst_arr = JS_VALUE_TO_PTR(dst_buffer->u.array_buffer.byte_buffer);
+            src_buffer = JS_VALUE_TO_PTR(p1->u.typed_array.buffer);
+            src_arr = JS_VALUE_TO_PTR(src_buffer->u.array_buffer.byte_buffer);
+            /* same type: must copy to preserve float bits */
+            memmove(dst_arr->buf + ((p->u.typed_array.offset + offset) << shift),
+                    src_arr->buf + (p1->u.typed_array.offset << shift),
+                    src_len << shift);
+            goto done;
+        }
+    } else {
+        if (js_get_length32(ctx, (uint32_t *)&src_len, argv[0]))
+            return JS_EXCEPTION;
+        if (src_len > dst_len || offset > dst_len - src_len) {
+        range_error:
+            return JS_ThrowRangeError(ctx, "invalid array length");
+        }
+    }
+    for(i = 0; i < src_len; i++) {
+        JSValue val;
+        val = JS_GetPropertyUint32(ctx, argv[0], i);
+        if (JS_IsException(val))
+            return JS_EXCEPTION;
+        val = JS_SetPropertyUint32(ctx, *this_val, offset + i, val);
+        if (JS_IsException(val))
+            return JS_EXCEPTION;
+    }
+ done:
+    return JS_UNDEFINED;
 }
 
 /* Date */

@@ -230,6 +230,8 @@ JSValue js_typed_array_get_length(JSContext *ctx, JSValue *this_val,
                                   int argc, JSValue *argv, int magic);
 JSValue js_typed_array_subarray(JSContext *ctx, JSValue *this_val,
                                 int argc, JSValue *argv);
+JSValue js_typed_array_set(JSContext *ctx, JSValue *this_val,
+                           int argc, JSValue *argv);
 
 JSValue js_date_constructor(JSContext *ctx, JSValue *this_val,
                             int argc, JSValue *argv);
