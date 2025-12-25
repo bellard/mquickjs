@@ -78,7 +78,7 @@ MQJS_BUILD_FLAGS=-m32
 endif
 
 PROGS=mqjs$(EXE) example$(EXE)
-TEST_PROGS=dtoa_test libm_test 
+TEST_PROGS=dtoa_test libm_test rempio2_test
 
 all: $(PROGS)
 
