@@ -17612,6 +17612,8 @@ JSValue js_regexp_get_flags(JSContext *ctx, JSValue *this_val,
                             int argc, JSValue *argv)
 {
     JSRegExp *re = js_get_regexp(ctx, *this_val);
+    if (!re)
+        return JS_EXCEPTION;
     JSByteArray *arr;
     size_t len;
     char buf[RE_FLAG_COUNT + 1];
