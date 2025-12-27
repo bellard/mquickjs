@@ -1,0 +1,7 @@
+*.d
+*_stdlib.h
+
+/example
+/mqjs
+/*_stdlib
+/mquickjs_atom.h
