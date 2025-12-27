@@ -1,0 +1,30 @@
+# Local configuration file for mquickjs
+# Uncomment or set variables to 'y' to enable, or 'n' to disable.
+
+# Enable generic profiling flags (-p)
+#CONFIG_PROFILE=y
+
+# Force 32-bit x86 build
+#CONFIG_X86_32=y
+
+# Force ARM 32-bit build (sets CROSS_PREFIX=arm-linux-gnu- and -mthumb)
+#CONFIG_ARM32=y
+
+# Build for Windows (MinGW)
+#CONFIG_WIN32=y
+
+# Use soft float (software floating point)
+#CONFIG_SOFTFLOAT=y
+
+# Enable AddressSanitizer (ASAN) for debugging memory issues
+#CONFIG_ASAN=y
+
+# Enable profiling (gprof)
+#CONFIG_GPROF=y
+
+# Optimize for small code size (default: y)
+# Set to 'n' to use -O2 instead of -Os
+#CONFIG_SMALL=y
+
+# Treat compiler warnings as errors
+#CONFIG_WERROR=y
