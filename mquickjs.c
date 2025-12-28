@@ -8020,7 +8020,11 @@ static void next_token(JSParseState *s)
     p = s->source_buf + s->buf_pos;
  redo:
     s->token.source_pos = p - s->source_buf;
-    c = *p;
+    /* Check buffer bounds - treat end of buffer as EOF (input may not be null-terminated) */
+    if (s->token.source_pos >= s->buf_len)
+        c = 0;
+    else
+        c = *p;
     switch(c) {
     case 0:
         s->token.val = TOK_EOF;
