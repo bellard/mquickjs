@@ -3406,11 +3406,12 @@ static JSValue JS_DeleteProperty(JSContext *ctx, JSValue this_obj,
         if (pr->key == prop) {
             if (JS_IS_ROM_PTR(ctx, arr)) {
                 JSGCRef this_obj_ref;
-                
+                int ret;
                 JS_PUSH_VALUE(ctx, this_obj);
-                if (js_update_props(ctx, this_obj))
-                    return JS_EXCEPTION;
+                ret = js_update_props(ctx, this_obj);
                 JS_POP_VALUE(ctx, this_obj);
+                if (ret)
+                    return JS_EXCEPTION;
                 p = JS_VALUE_TO_PTR(this_obj);
                 arr = JS_VALUE_TO_PTR(p->props);
                 pr = (JSProperty *)(arr->arr + idx);
