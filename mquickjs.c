@@ -1590,20 +1590,24 @@ typedef struct {
 /* return 0 if OK, -1 in case of exception (exception possible if len > 0) */
 static int string_buffer_push(JSContext *ctx, StringBuffer *s, int len)
 {
+    int ret = 0;
     s->len = 0;
     s->is_ascii = TRUE;
     if (len > 0) {
         JSByteArray *arr;
         arr = js_alloc_byte_array(ctx, len);
-        if (!arr)
-            return -1;
-        s->buffer_ref.val = JS_VALUE_FROM_PTR(arr);
+        if (arr) {
+            s->buffer_ref.val = JS_VALUE_FROM_PTR(arr);
+        } else {
+            s->buffer_ref.val = JS_EXCEPTION;
+            ret = -1;
+        }
     } else {
         s->buffer_ref.val = js_get_atom(ctx, JS_ATOM_empty);
     }
     s->buffer_ref.prev = ctx->top_gc_ref;
     ctx->top_gc_ref = &s->buffer_ref;
-    return 0;
+    return ret;
 }
 
 /* val2 must be a string. Return 0 if OK, -1 in case of exception */
@@ -13684,11 +13688,13 @@ JSValue js_string_repeat(JSContext *ctx, JSValue *this_val,
         return JS_ThrowRangeError(ctx, "invalid repeat count");
     if (p->len == 0 || n == 1)
         return *this_val;
-    if (string_buffer_push(ctx, b, len))
-        return JS_EXCEPTION;
+    if (string_buffer_push(ctx, b, len)) {
+        goto out;
+    }
     while (n-- > 0) {
         string_buffer_concat_str(ctx, b, *this_val);
     }
+out:
     return string_buffer_pop(ctx, b);
 }
 
