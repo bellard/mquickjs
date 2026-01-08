@@ -24,7 +24,7 @@
 #ifndef READLINE_H
 #define READLINE_H
 
-#include "cutils.h"
+#include <stdint.h>
 
 typedef struct ReadlineState ReadlineState;
 

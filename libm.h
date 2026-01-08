@@ -21,6 +21,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+#include <stdint.h>
+
 double js_scalbn(double x, int n);
 double js_floor(double x);
 double js_ceil(double x);
