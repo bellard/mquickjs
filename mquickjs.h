@@ -26,6 +26,7 @@
 #define MQUICKJS_H
 
 #include <inttypes.h>
+#include <stddef.h>
 
 #if defined(__GNUC__) || defined(__clang__)
 #define __js_printf_like(f, a)   __attribute__((format(printf, f, a)))

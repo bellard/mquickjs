@@ -30,7 +30,6 @@
  * is preserved.
  * ====================================================
  */
-#include <stdio.h>
 #include <inttypes.h>
 #include <math.h>
 #define NDEBUG
@@ -433,10 +432,10 @@ double js_scalbn(double x, int n)
         if (k > 0) 				/* normal result */
 	    {x = set_high_word(x, (hx&0x800fffff)|(k<<20)); return x;}
         if (k <= -54) {
-            if (n > 50000) 	/* in case integer overflow in n+k */
-		return huge*copysign(huge,x);	/*overflow*/
-	    else
-                return tiny*copysign(tiny,x); 	/*underflow*/
+          if (n > 50000) /* in case integer overflow in n+k */
+            return huge * copysign(huge, x); /*overflow*/
+          else
+            return tiny * copysign(tiny, x); /*underflow*/
         }
         k += 54;				/* subnormal result */
         x = set_high_word(x, (hx&0x800fffff)|(k<<20));

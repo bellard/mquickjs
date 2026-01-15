@@ -22,20 +22,16 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-#include <errno.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <inttypes.h>
 #include <string.h>
 #include <assert.h>
-#include <ctype.h>
 #include <time.h>
 #include <sys/time.h>
-#include <math.h>
 #include <fcntl.h>
 
-#include "cutils.h"
 #include "mquickjs.h"
 
 #define JS_CLASS_RECTANGLE (JS_CLASS_USER + 0)

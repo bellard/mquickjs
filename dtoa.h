@@ -24,6 +24,9 @@
 
 //#define JS_DTOA_DUMP_STATS
 
+#include <stdint.h>
+#include <stddef.h>
+
 /* maximum number of digits for fixed and frac formats */
 #define JS_DTOA_MAX_DIGITS 101
 
