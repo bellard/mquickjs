@@ -348,6 +348,22 @@ the C stack usage is bounded. There is no abstract syntax tree. The
 bytecode is generated in one pass with several tricks to optimize it
 (QuickJS has several optimization passes).
 
+#### Configuration
+
+The build configuration can be customized by creating a `config.mk` file.
+You can copy the example configuration:
+
+```bash
+cp config.mk.example config.mk
+```
+
+Then edit `config.mk` to enable or disable specific options (e.g. `CONFIG_ASAN=y` for debugging).
+Alternatively, you can override options directly on the command line:
+
+```bash
+make CONFIG_SMALL=n
+```
+
 ## Tests and benchmarks
 
 Running the basic tests:
