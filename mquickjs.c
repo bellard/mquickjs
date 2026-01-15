@@ -13597,7 +13597,8 @@ JSValue js_string_toLowerCase(JSContext *ctx, JSValue *this_val,
     if (JS_IsException(*this_val))
         return *this_val;
     len = js_string_len(ctx, *this_val);
-    string_buffer_push(ctx, b, len);
+    if (string_buffer_push(ctx, b, len))
+        return JS_EXCEPTION;
     for(i = 0; i < len; i++) {
         c = string_getc(ctx, *this_val, i);
         if (to_lower) {
