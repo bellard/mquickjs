@@ -250,7 +250,17 @@ static uint8_t *load_file(const char *filename, int *plen)
     buf_len = ftell(f);
     fseek(f, 0, SEEK_SET);
     buf = malloc(buf_len + 1);
-    fread(buf, 1, buf_len, f);
+    if (!buf) {
+        perror(filename);
+        exit(1);
+    }
+    for (size_t total = 0, n; total < (size_t)buf_len; total += n) {
+        n = fread(buf + total, 1, buf_len - total, f);
+        if (n == 0) {
+            perror(filename);
+            exit(1);
+        }
+    }
     buf[buf_len] = '\0';
     fclose(f);
     if (plen)
