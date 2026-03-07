@@ -264,6 +264,7 @@ JSContext *JS_NewContext(void *mem_start, size_t mem_size, const JSSTDLibraryDef
 JSContext *JS_NewContext2(void *mem_start, size_t mem_size, const JSSTDLibraryDef *stdlib_def, JS_BOOL prepare_compilation);
 void JS_FreeContext(JSContext *ctx);
 void JS_SetContextOpaque(JSContext *ctx, void *opaque);
+void *JS_GetContextOpaque(JSContext *ctx);
 void JS_SetInterruptHandler(JSContext *ctx, JSInterruptHandler *interrupt_handler);
 void JS_SetRandomSeed(JSContext *ctx, uint64_t seed);
 JSValue JS_GetGlobalObject(JSContext *ctx);

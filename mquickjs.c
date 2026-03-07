@@ -3675,6 +3675,11 @@ void JS_SetContextOpaque(JSContext *ctx, void *opaque)
     ctx->opaque = opaque;
 }
 
+void *JS_GetContextOpaque(JSContext *ctx)
+{
+    return ctx->opaque;
+}
+
 void JS_SetInterruptHandler(JSContext *ctx, JSInterruptHandler *interrupt_handler)
 {
     ctx->interrupt_handler = interrupt_handler;
