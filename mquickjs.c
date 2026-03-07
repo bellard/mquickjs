@@ -1150,6 +1150,16 @@ static JSObject *js_get_object_class(JSContext *ctx, JSValue val, int class_id)
     }
 }
 
+BOOL JS_IsArray(JSContext *ctx, JSValue val)
+{
+    if (!JS_IsPtr(val)) {
+        return FALSE;
+    } else {
+        JSObject *p = JS_VALUE_TO_PTR(val);
+        return (p->mtag == JS_MTAG_OBJECT && p->class_id == JS_CLASS_ARRAY);
+    }
+}
+
 BOOL JS_IsFunction(JSContext *ctx, JSValue val)
 {
     if (!JS_IsPtr(val)) {
