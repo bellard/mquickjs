@@ -2113,6 +2113,11 @@ const char *JS_ToCString(JSContext *ctx, JSValue val, JSCStringBuf *buf)
     return JS_ToCStringLen(ctx, NULL, val, buf);
 }
 
+int JS_HasException(JSContext *ctx)
+{
+  return ctx->current_exception != JS_UNINITIALIZED;
+}
+
 JSValue JS_GetException(JSContext *ctx)
 {
     JSValue obj;

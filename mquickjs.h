@@ -310,6 +310,7 @@ int JS_ToUint32(JSContext *ctx, uint32_t *pres, JSValue val);
 int JS_ToInt32Sat(JSContext *ctx, int *pres, JSValue val);
 int JS_ToNumber(JSContext *ctx, double *pres, JSValue val);
 
+int JS_HasException(JSContext *ctx);
 JSValue JS_GetException(JSContext *ctx);
 int JS_StackCheck(JSContext *ctx, uint32_t len);
 void JS_PushArg(JSContext *ctx, JSValue val);
