@@ -2117,7 +2117,7 @@ JSValue JS_GetException(JSContext *ctx)
 {
     JSValue obj;
     obj = ctx->current_exception;
-    ctx->current_exception = JS_UNDEFINED;
+    ctx->current_exception = JS_UNINITIALIZED;
     return obj;
 }
 
@@ -3610,7 +3610,7 @@ JSContext *JS_NewContext2(void *mem_start, size_t mem_size, const JSSTDLibraryDe
     }
     
     
-    ctx->current_exception = JS_UNDEFINED;
+    ctx->current_exception = JS_UNINITIALIZED;
 #ifdef DEBUG_GC
     /* set the dummy block at the start of the memory */
     {
@@ -5583,7 +5583,7 @@ JSValue JS_Call(JSContext *ctx, int call_flags)
                             /* exception caught by a 'catch' in the
                                current function */
                             *--sp = ctx->current_exception;
-                            ctx->current_exception = JS_NULL;
+                            ctx->current_exception = JS_UNINITIALIZED;
                             byte_code = JS_VALUE_TO_PTR(b->byte_code);
                             pc = byte_code->buf + JS_VALUE_GET_SPECIAL_VALUE(val2);
                             goto restart;
