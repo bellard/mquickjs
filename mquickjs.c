@@ -12200,6 +12200,12 @@ static void gc_mark_all(JSContext *ctx, BOOL keep_atoms)
                 /* merge all the consecutive free blocks */
                 ptr1 = ptr + size;
                 while (ptr1 < ctx->heap_free && ((JSFreeBlock *)ptr1)->gc_mark == 0) {
+                    JSObject *p1 = (JSObject *)ptr1;
+                    /* call the user finalizer if needed */
+                    if (p1->mtag == JS_MTAG_OBJECT && p1->class_id >= JS_CLASS_USER &&
+                        ctx->c_finalizer_table[p1->class_id - JS_CLASS_USER] != NULL) {
+                        ctx->c_finalizer_table[p1->class_id - JS_CLASS_USER](ctx, p1->u.user.opaque);
+                    }
                     ptr1 += get_mblock_size(ptr1);
                 }
                 size = ptr1 - ptr;
