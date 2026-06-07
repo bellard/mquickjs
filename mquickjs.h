@@ -209,6 +209,8 @@ JS_BOOL JS_IsError(JSContext *ctx, JSValue val);
 JS_BOOL JS_IsFunction(JSContext *ctx, JSValue val);
 JS_BOOL JS_IsArray(JSContext *ctx, JSValue obj);
 
+JS_BOOL JS_IsStrictEqual(JSContext *ctx, JSValue a, JSValue b);
+
 int JS_GetClassID(JSContext *ctx, JSValue val);
 void JS_SetOpaque(JSContext *ctx, JSValue val, void *opaque);
 void *JS_GetOpaque(JSContext *ctx, JSValue val);

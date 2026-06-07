@@ -4724,6 +4724,11 @@ static BOOL js_strict_eq(JSContext *ctx, JSValue op1, JSValue op2)
     return res;
 }
 
+JS_BOOL JS_IsStrictEqual(JSContext *ctx, JSValue a, JSValue b)
+{
+    return js_strict_eq(ctx, a, b);
+}
+
 static JSValue js_strict_eq_slow(JSContext *ctx, BOOL is_neq)
 {
     BOOL res;
