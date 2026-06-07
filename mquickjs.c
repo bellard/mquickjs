@@ -387,6 +387,8 @@ static int JS_ToUint8Clamp(JSContext *ctx, int *pres, JSValue val);
 static JSValue js_set_prototype_internal(JSContext *ctx, JSValue obj, JSValue proto);
 static JSValue js_resize_byte_array(JSContext *ctx, JSValue val, int new_size);
 static JSValueArray *js_alloc_props(JSContext *ctx, int n);
+static float js_f16_to_f32(uint16_t h);
+static uint16_t js_f32_to_f16(float f);
 
 typedef enum OPCodeFormat {
 #define FMT(f) OP_FMT_ ## f,
@@ -2586,6 +2588,8 @@ static JSValue JS_GetPropertyInternal(JSContext *ctx, JSValue obj, JSValue prop,
                         return JS_NewInt32(ctx, *((int32_t *)arr->buf + idx));
                     case JS_CLASS_UINT32_ARRAY:
                         return JS_NewUint32(ctx, *((uint32_t *)arr->buf + idx));
+                    case JS_CLASS_FLOAT16_ARRAY:
+                        return JS_NewFloat64(ctx, js_f16_to_f32(*((uint16_t *)arr->buf + idx)));
                     case JS_CLASS_FLOAT32_ARRAY:
                         return JS_NewFloat64(ctx, *((float *)arr->buf + idx));
                     case JS_CLASS_FLOAT64_ARRAY:
@@ -3221,6 +3225,7 @@ static JSValue JS_SetPropertyInternal(JSContext *ctx, JSValue this_obj,
             case JS_CLASS_UINT8C_ARRAY:
                 conv_ret = JS_ToUint8Clamp(ctx, &v, val);
                 break;
+            case JS_CLASS_FLOAT16_ARRAY:
             case JS_CLASS_FLOAT32_ARRAY:
             case JS_CLASS_FLOAT64_ARRAY:
                 conv_ret = JS_ToNumber(ctx, &d, val);
@@ -3254,6 +3259,9 @@ static JSValue JS_SetPropertyInternal(JSContext *ctx, JSValue this_obj,
             case JS_CLASS_INT32_ARRAY:
             case JS_CLASS_UINT32_ARRAY:
                 *((uint32_t *)arr->buf + idx) = v;
+                break;
+            case JS_CLASS_FLOAT16_ARRAY:
+                *((uint16_t *)arr->buf + idx) = js_f32_to_f16((float)d);
                 break;
             case JS_CLASS_FLOAT32_ARRAY:
                 *((float *)arr->buf + idx) = d;
@@ -6788,6 +6796,9 @@ static void js_dump_object(JSContext *ctx, JSObject *p, int flags)
                         v = *((uint32_t *)arr->buf + idx);
                         js_printf(ctx, "%u", v);
                         break;
+                    case JS_CLASS_FLOAT16_ARRAY:
+                        d = js_f16_to_f32(*((uint16_t *)arr->buf + idx));
+                        goto ta_d;
                     case JS_CLASS_FLOAT32_ARRAY:
                         d = *((float *)arr->buf + idx);
                         goto ta_d;
@@ -11990,6 +12001,7 @@ static void gc_mark_flush(GCMarkState *s)
                 case JS_CLASS_UINT16_ARRAY:
                 case JS_CLASS_INT32_ARRAY:
                 case JS_CLASS_UINT32_ARRAY:
+                case JS_CLASS_FLOAT16_ARRAY:
                 case JS_CLASS_FLOAT32_ARRAY:
                 case JS_CLASS_FLOAT64_ARRAY:
                     gc_mark(s, p->u.typed_array.buffer);
@@ -12298,6 +12310,7 @@ static void gc_thread_block(JSContext *ctx, void *ptr)
             case JS_CLASS_UINT16_ARRAY:
             case JS_CLASS_INT32_ARRAY:
             case JS_CLASS_UINT32_ARRAY:
+            case JS_CLASS_FLOAT16_ARRAY:
             case JS_CLASS_FLOAT32_ARRAY:
             case JS_CLASS_FLOAT64_ARRAY:
                 gc_thread_pointer(ctx, &p->u.typed_array.buffer);
@@ -15105,8 +15118,63 @@ JSValue js_math_random(JSContext *ctx, JSValue *this_val,
 #define JS_TYPED_ARRAY_COUNT (JS_CLASS_FLOAT64_ARRAY - JS_CLASS_UINT8C_ARRAY + 1)
 
 static uint8_t typed_array_size_log2[JS_TYPED_ARRAY_COUNT] = {
-    0, 0, 0, 1, 1, 2, 2, 2, 3
+    0, 0, 0, 1, 1, 2, 2, 1, 2, 3
 };
+
+static float js_f16_to_f32(uint16_t h)
+{
+    union { uint32_t u; float f; } o;
+    uint32_t sign = ((uint32_t)h & 0x8000) << 16;
+    uint32_t exp = (h >> 10) & 0x1F;
+    uint32_t mant = h & 0x3FF;
+    if (exp == 0) {
+        if (mant == 0) {
+            o.u = sign;
+        } else {
+            int e = -1;
+            do { e++; mant <<= 1; } while (!(mant & 0x400));
+            o.u = sign | ((uint32_t)(127 - 15 - e) << 23) | ((mant & 0x3FF) << 13);
+        }
+    } else if (exp == 0x1F) {
+        o.u = sign | 0x7F800000 | (mant << 13);
+    } else {
+        o.u = sign | ((exp + (127 - 15)) << 23) | (mant << 13);
+    }
+    return o.f;
+}
+
+static uint16_t js_f32_to_f16(float f)
+{
+    union { float f; uint32_t u; } i;
+    uint32_t x, mant, round, half;
+    int32_t exp;
+    uint16_t sign, h;
+    int shift;
+    i.f = f;
+    x = i.u;
+    sign = (x >> 16) & 0x8000;
+    exp = (int32_t)((x >> 23) & 0xFF) - 127;
+    mant = x & 0x7FFFFF;
+    if (exp == 128) {
+        if (mant) return sign | 0x7E00 | (uint16_t)(mant >> 13);
+        return sign | 0x7C00;
+    }
+    if (exp > 15) return sign | 0x7C00;
+    if (exp < -14) {
+        if (exp < -25) return sign;
+        mant |= 0x800000;
+        shift = -exp - 14 + 13;
+        round = mant & (((uint32_t)1 << shift) - 1);
+        h = sign | (uint16_t)(mant >> shift);
+        half = (uint32_t)1 << (shift - 1);
+        if (round > half || (round == half && (h & 1))) h++;
+        return h;
+    }
+    h = sign | (uint16_t)((exp + 15) << 10) | (uint16_t)(mant >> 13);
+    round = mant & 0x1FFF;
+    if (round > 0x1000 || (round == 0x1000 && (h & 1))) h++;
+    return h;
+}
 
 static int JS_ToIndex(JSContext *ctx, uint64_t *plen, JSValue val)
 {
