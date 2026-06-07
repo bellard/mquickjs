@@ -15415,6 +15415,101 @@ JSValue js_typed_array_set(JSContext *ctx, JSValue *this_val,
     return JS_UNDEFINED;
 }
 
+JSValue JS_NewArrayBuffer(JSContext *ctx, size_t len)
+{
+    return js_array_buffer_alloc(ctx, len);
+}
+
+uint8_t *JS_GetArrayBuffer(JSContext *ctx, JSValue val, size_t *psize)
+{
+    JSObject *p;
+    JSByteArray *arr;
+    if (!JS_IsObject(ctx, val))
+        goto fail;
+    p = JS_VALUE_TO_PTR(val);
+    if (p->class_id != JS_CLASS_ARRAY_BUFFER)
+        goto fail;
+    arr = JS_VALUE_TO_PTR(p->u.array_buffer.byte_buffer);
+    if (psize)
+        *psize = arr->size;
+    return arr->buf;
+fail:
+    if (psize)
+        *psize = 0;
+    JS_ThrowTypeError(ctx, "expected an ArrayBuffer");
+    return NULL;
+}
+
+JSValue JS_NewTypedArray(JSContext *ctx, int class_id, size_t len,
+                         JSValue buffer, size_t byte_offset)
+{
+    int size_log2;
+    JSObject *p;
+    JSByteArray *arr;
+    JSValue obj;
+    JSGCRef buffer_ref;
+
+    if (class_id < JS_CLASS_UINT8C_ARRAY || class_id > JS_CLASS_FLOAT64_ARRAY)
+        return JS_ThrowTypeError(ctx, "invalid typed array class");
+    size_log2 = typed_array_size_log2[class_id - JS_CLASS_UINT8C_ARRAY];
+
+    if (JS_IsUndefined(buffer)) {
+        if (byte_offset != 0)
+            return JS_ThrowRangeError(ctx, "byte_offset must be 0 without a buffer");
+        if (len > (size_t)(JS_SHORTINT_MAX >> size_log2))
+            return JS_ThrowRangeError(ctx, "invalid typed array length");
+        buffer = js_array_buffer_alloc(ctx, len << size_log2);
+        if (JS_IsException(buffer))
+            return JS_EXCEPTION;
+    } else {
+        if (!JS_IsObject(ctx, buffer))
+            return JS_ThrowTypeError(ctx, "expected an ArrayBuffer");
+        p = JS_VALUE_TO_PTR(buffer);
+        if (p->class_id != JS_CLASS_ARRAY_BUFFER)
+            return JS_ThrowTypeError(ctx, "expected an ArrayBuffer");
+        arr = JS_VALUE_TO_PTR(p->u.array_buffer.byte_buffer);
+        if ((byte_offset & (((size_t)1 << size_log2) - 1)) != 0)
+            return JS_ThrowRangeError(ctx, "byte_offset must be aligned");
+        if (byte_offset > arr->size)
+            return JS_ThrowRangeError(ctx, "byte_offset out of bounds");
+        if (len > ((arr->size - byte_offset) >> size_log2))
+            return JS_ThrowRangeError(ctx, "invalid typed array length");
+    }
+
+    JS_PUSH_VALUE(ctx, buffer);
+    obj = JS_NewObjectClass(ctx, class_id, sizeof(JSTypedArray));
+    JS_POP_VALUE(ctx, buffer);
+    if (JS_IsException(obj))
+        return obj;
+    p = JS_VALUE_TO_PTR(obj);
+    p->u.typed_array.buffer = buffer;
+    p->u.typed_array.offset = byte_offset >> size_log2;
+    p->u.typed_array.len = len;
+    return obj;
+}
+
+int JS_GetTypedArray(JSContext *ctx, JSValue val, int *pclass_id,
+                     JSValue *pbuffer, size_t *pbyte_offset, size_t *plen)
+{
+    JSObject *p;
+    int size_log2;
+    if (!JS_IsObject(ctx, val))
+        return -1;
+    p = JS_VALUE_TO_PTR(val);
+    if (p->class_id < JS_CLASS_UINT8C_ARRAY || p->class_id > JS_CLASS_FLOAT64_ARRAY)
+        return -1;
+    size_log2 = typed_array_size_log2[p->class_id - JS_CLASS_UINT8C_ARRAY];
+    if (pclass_id)
+        *pclass_id = p->class_id;
+    if (pbuffer)
+        *pbuffer = p->u.typed_array.buffer;
+    if (pbyte_offset)
+        *pbyte_offset = (size_t)p->u.typed_array.offset << size_log2;
+    if (plen)
+        *plen = p->u.typed_array.len;
+    return 0;
+}
+
 /* Date */
 
 JSValue JS_NewDate(JSContext *ctx, double epoch_ms)
