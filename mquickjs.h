@@ -291,6 +291,13 @@ JSValue JS_NewArray(JSContext *ctx, int initial_len);
 JSValue JS_NewCFunctionParams(JSContext *ctx, int func_idx, JSValue params);
 JSValue JS_NewDate(JSContext *ctx, double epoch_ms);
 
+JSValue JS_NewArrayBuffer(JSContext *ctx, size_t len);
+uint8_t *JS_GetArrayBuffer(JSContext *ctx, JSValue val, size_t *psize);
+JSValue JS_NewTypedArray(JSContext *ctx, int class_id, size_t len,
+                         JSValue buffer, size_t byte_offset);
+int JS_GetTypedArray(JSContext *ctx, JSValue val, int *pclass_id,
+                     JSValue *pbuffer, size_t *pbyte_offset, size_t *plen);
+
 #define JS_EVAL_RETVAL    (1 << 0) /* return the last value instead of undefined (slower code) */
 #define JS_EVAL_REPL      (1 << 1) /* implicitly defined global variables in assignments */
 #define JS_EVAL_STRIP_COL (1 << 2) /* strip column number debug information (save memory) */
