@@ -8793,7 +8793,7 @@ static int find_var(JSParseState *s, JSValue name)
 
     b = JS_VALUE_TO_PTR(s->cur_func);
     arr = JS_VALUE_TO_PTR(b->vars);
-    for(i = 0; i < s->local_vars_len; i++) {
+    for(i = s->local_vars_len - 1; i >= 0; i--) {
         if (arr->arr[i] == name)
             return i;
     }
@@ -10805,11 +10805,8 @@ static int js_parse_statement(JSParseState *s, int state, int dummy_param)
                 if (s->token.val != TOK_IDENT)
                     js_parse_error(s, "identifier expected");
                 name = s->token.value;
-                /* XXX: the local scope is not implemented, so we add
-                   a normal variable */
-                if (find_var(s, name) >= 0 || find_ext_var(s, name) >= 0) {
-                    js_parse_error(s, "catch variable already exists");
-                }
+                /* always allocate a fresh slot so the catch parameter
+                   shadows any outer binding within the catch body */
                 var_idx = add_var(s, name);
                 next_token(s);
                 js_parse_expect(s, ')');
@@ -10831,6 +10828,14 @@ static int js_parse_statement(JSParseState *s, int state, int dummy_param)
                 PARSE_CALL(s, 9, js_parse_block, 0);
                 PARSE_POP_VAL(s, label_catch2);
                 PARSE_POP_VAL(s, label_end);
+
+                /* hide the catch parameter from name resolution outside
+                   the catch body */
+                {
+                    JSFunctionBytecode *b = JS_VALUE_TO_PTR(s->cur_func);
+                    JSValueArray *arr = JS_VALUE_TO_PTR(b->vars);
+                    arr->arr[var_idx] = JS_UNINITIALIZED;
+                }
 
                 be = VALUE_TO_SP(s->ctx, s->top_break);
                 label_finally = be->label_finally;
