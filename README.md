@@ -15,7 +15,7 @@ JavaScript constructs are forbidden.
 
 Although MQuickJS shares much code with QuickJS, it internals are
 different in order to consume less memory. In particular, it relies on
-a tracing garbage collector, the VM does not use the CPU stack and
+a tracing garbage collector, the VM does not rely on the CPU stack and
 strings are stored in UTF-8.
 
 ## REPL
@@ -95,7 +95,7 @@ engines. Here are the main points:
 ```js
     [ 1, , 3 ] // SyntaxError
 ```
-- Only global `eval` is supported so it cannot access to nor modify
+- Only global `eval` is supported so it cannot access nor modify
   local variables:
 ```js
     eval('1 + 2'); // forbidden
@@ -310,8 +310,9 @@ CPU). A value may contain:
 JavaScript objects require at least 3 CPU words (hence 12 bytes on a
 32 bit CPU). Additional data may be allocated depending on the object
 class. The properties are stored in a hash table. Each property
-requires at least 3 CPU words. Properties may reside in ROM for
-standard library objects.
+requires at least 3 CPU words. Properties of standard library 
+objects may reside in ROM.
+
 
 Property keys are JSValues unlike QuickJS where they have a specific
 type. They are either a string or a positive 31 bit integer. String
@@ -323,7 +324,7 @@ stored explicitly but are still visible when iterating thru 16 bit
 code units in JavaScript. Hence full compatibility with JavaScript and
 UTF-8 is maintained.
 
-C Functions can be stored as a single value to reduce the overhead. In
+C functions can be stored as a single value to reduce the overhead. In
 this case, no additional properties can be added. Most standard
 library functions are stored this way.
 
