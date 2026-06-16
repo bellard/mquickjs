@@ -1102,7 +1102,7 @@ static BOOL JS_IsPrimitive(JSContext *ctx, JSValue val)
 }
 
 /* Note: short functions are not considered as objects by this function */
-static BOOL JS_IsObject(JSContext *ctx, JSValue val)
+BOOL JS_IsObject(JSContext *ctx, JSValue val)
 {
     if (!JS_IsPtr(val)) {
         return FALSE;
