@@ -8767,22 +8767,58 @@ static void js_emit_push_const(JSParseState *s, JSValue val)
     }
 }
 
-/* return the local variable index or -1 if not found */
-static int find_func_var(JSContext *ctx, JSValue func, JSValue name)
+/* a catch parameter is stored in 'vars' as a [name, start_pos,
+   end_pos] scope record once its catch body has been parsed */
+static BOOL is_catch_scope(JSValue val)
+{
+    return JS_IsPtr(val) &&
+        js_get_mtag(JS_VALUE_TO_PTR(val)) == JS_MTAG_VALUE_ARRAY;
+}
+
+/* return the local variable index visible at 'pos' or -1 if not found */
+static int find_func_var(JSContext *ctx, JSValue func, JSValue name,
+                         JSSourcePos pos)
 {
     JSFunctionBytecode *b;
-    JSValueArray *arr;
+    JSValueArray *arr, *scope;
     int i;
 
     b = JS_VALUE_TO_PTR(func);
     if (b->vars == JS_NULL)
         return -1;
     arr = JS_VALUE_TO_PTR(b->vars);
-    for(i = 0; i < arr->size; i++) {
+    for(i = arr->size - 1; i >= 0; i--) {
         if (arr->arr[i] == name)
             return i;
+        if (is_catch_scope(arr->arr[i])) {
+            scope = JS_VALUE_TO_PTR(arr->arr[i]);
+            if (scope->arr[0] == name &&
+                pos >= JS_VALUE_GET_INT(scope->arr[1]) &&
+                pos < JS_VALUE_GET_INT(scope->arr[2]))
+                return i;
+        }
     }
     return -1;
+}
+
+/* replace the catch scope records by their name once all the local
+   functions have been resolved */
+static void remove_catch_scopes(JSValue func)
+{
+    JSFunctionBytecode *b;
+    JSValueArray *arr, *scope;
+    int i;
+
+    b = JS_VALUE_TO_PTR(func);
+    if (b->vars == JS_NULL)
+        return;
+    arr = JS_VALUE_TO_PTR(b->vars);
+    for(i = 0; i < arr->size; i++) {
+        if (is_catch_scope(arr->arr[i])) {
+            scope = JS_VALUE_TO_PTR(arr->arr[i]);
+            arr->arr[i] = scope->arr[0];
+        }
+    }
 }
 
 static int find_var(JSParseState *s, JSValue name)
@@ -10797,6 +10833,7 @@ static int js_parse_statement(JSParseState *s, int state, int dummy_param)
                 JSValue label_catch2;
                 int var_idx;
                 JSValue name;
+                JSSourcePos start_pos;
 
                 label_catch2 = new_label(s);
 
@@ -10805,6 +10842,7 @@ static int js_parse_statement(JSParseState *s, int state, int dummy_param)
                 if (s->token.val != TOK_IDENT)
                     js_parse_error(s, "identifier expected");
                 name = s->token.value;
+                start_pos = s->token.source_pos;
                 /* always allocate a fresh slot so the catch parameter
                    shadows any outer binding within the catch body */
                 var_idx = add_var(s, name);
@@ -10825,16 +10863,30 @@ static int js_parse_statement(JSParseState *s, int state, int dummy_param)
                 
                 PARSE_PUSH_VAL(s, label_end);
                 PARSE_PUSH_VAL(s, label_catch2);
+                PARSE_PUSH_INT(s, var_idx);
+                PARSE_PUSH_INT(s, start_pos);
                 PARSE_CALL(s, 9, js_parse_block, 0);
+                PARSE_POP_INT(s, start_pos);
+                PARSE_POP_INT(s, var_idx);
                 PARSE_POP_VAL(s, label_catch2);
                 PARSE_POP_VAL(s, label_end);
 
                 /* hide the catch parameter from name resolution outside
-                   the catch body */
+                   the catch body. The local functions are resolved
+                   later so the scope of the parameter is recorded. */
                 {
-                    JSFunctionBytecode *b = JS_VALUE_TO_PTR(s->cur_func);
-                    JSValueArray *arr = JS_VALUE_TO_PTR(b->vars);
-                    arr->arr[var_idx] = JS_UNINITIALIZED;
+                    JSFunctionBytecode *b;
+                    JSValueArray *arr, *scope;
+
+                    scope = js_alloc_value_array(s->ctx, 0, 3);
+                    if (!scope)
+                        js_parse_error_mem(s);
+                    b = JS_VALUE_TO_PTR(s->cur_func);
+                    arr = JS_VALUE_TO_PTR(b->vars);
+                    scope->arr[0] = arr->arr[var_idx];
+                    scope->arr[1] = JS_NewShortInt(start_pos);
+                    scope->arr[2] = JS_NewShortInt(s->token.source_pos);
+                    arr->arr[var_idx] = JS_VALUE_FROM_PTR(scope);
                 }
 
                 be = VALUE_TO_SP(s->ctx, s->top_break);
@@ -11417,7 +11469,7 @@ static void resolve_var_refs(JSParseState *s, JSValue *pfunc, JSValue *pparent_f
         b = JS_VALUE_TO_PTR(*pfunc);
         ext_vars = JS_VALUE_TO_PTR(b->ext_vars);
         var_name = ext_vars->arr[2 * i];
-        var_idx = find_func_var(ctx, *pparent_func, var_name);
+        var_idx = find_func_var(ctx, *pparent_func, var_name, b->source_pos);
         if (var_idx >= 0) {
             if (var_idx < arg_count) {
                 decl = (JS_VARREF_KIND_ARG << 16) | var_idx;
@@ -11542,6 +11594,7 @@ static void js_parse_local_functions(JSParseState *s, JSValue *pfunc)
             }
         }
         
+        remove_catch_scopes(*pfunc);
         if (*pparent_func != JS_NULL) {
             resolve_var_refs(s, pfunc, pparent_func);
         }
