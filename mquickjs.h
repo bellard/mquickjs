@@ -313,6 +313,8 @@ JSValue JS_ToString(JSContext *ctx, JSValue val);
 int JS_ToInt32(JSContext *ctx, int *pres, JSValue val);
 int JS_ToUint32(JSContext *ctx, uint32_t *pres, JSValue val);
 int JS_ToInt32Sat(JSContext *ctx, int *pres, JSValue val);
+int JS_ToInt64(JSContext *ctx, int64_t *pres, JSValue val);
+int JS_ToUint64(JSContext *ctx, uint64_t *pres, JSValue val);
 int JS_ToNumber(JSContext *ctx, double *pres, JSValue val);
 
 JS_BOOL JS_HasException(JSContext *ctx);
