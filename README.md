@@ -36,10 +36,11 @@ usage: mqjs [options] [file [args]]
 -b  --allow-bytecode  allow bytecode in input file
 ```
 
-Compile and run a program using 10 kB of RAM:
+Compile and run graphical demos using 10 kB of RAM:
 
 ```sh
 ./mqjs --memory-limit 10k tests/mandelbrot.js
+./mqjs --memory-limit 10k tests/barnsley_fern.js
 ```
 
 
@@ -48,12 +49,14 @@ bytecode to a persistent storage (file or ROM):
 
 ```sh
 ./mqjs -o mandelbrot.bin tests/mandelbrot.js
+./mqjs -o barnsley_fern.bin tests/barnsley_fern.js
 ```
 
 Then you can run the compiled bytecode as a normal script:
 
 ```sh
 ./mqjs -b mandelbrot.bin
+./mqjs -b barnsley_fern.bin
 ```
 
 The bytecode format depends on the endianness and word length (32 or
