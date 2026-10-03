@@ -1,13 +1,15 @@
-#CONFIG_PROFILE=y
-#CONFIG_X86_32=y
-#CONFIG_ARM32=y
-#CONFIG_WIN32=y
-#CONFIG_SOFTFLOAT=y
-#CONFIG_ASAN=y
-#CONFIG_GPROF=y
-CONFIG_SMALL=y
+CONFIG_PROFILE ?=
+CONFIG_X86_32 ?=
+CONFIG_ARM32 ?=
+CONFIG_WIN32 ?=
+CONFIG_SOFTFLOAT ?=
+CONFIG_ASAN ?=
+CONFIG_GPROF ?=
+CONFIG_SMALL ?= y
 # consider warnings as errors (for development)
-#CONFIG_WERROR=y
+CONFIG_WERROR ?=
+
+-include config.mk
 
 ifdef CONFIG_ARM32
 CROSS_PREFIX=arm-linux-gnu-
@@ -76,7 +78,7 @@ MQJS_BUILD_FLAGS=-m32
 endif
 
 PROGS=mqjs$(EXE) example$(EXE)
-TEST_PROGS=dtoa_test libm_test 
+TEST_PROGS=dtoa_test libm_test rempio2_test
 
 all: $(PROGS)
 
@@ -147,6 +149,6 @@ rempio2_test: tests/rempio2_test.o libm.o
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
 clean:
-	rm -f *.o *.d *~ tests/*.o tests/*.d tests/*~ test_builtin.bin mqjs_stdlib mqjs_stdlib.h mquickjs_build_atoms mquickjs_atom.h mqjs_example example_stdlib example_stdlib.h $(PROGS) $(TEST_PROGS)
+	rm -f *.o *.d *~ tests/*.o tests/*.d tests/*~ test_builtin.bin mqjs_stdlib mqjs_stdlib.h mquickjs_atom.h example_stdlib example_stdlib.h $(PROGS) $(TEST_PROGS)
 
 -include $(wildcard *.d)

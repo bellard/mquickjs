@@ -1,0 +1,32 @@
+# Local configuration
+config.mk
+
+# Build artifacts
+*.o
+*.d
+*~
+*.exe
+mqjs
+example
+mqjs_stdlib
+mqjs_stdlib.h
+mquickjs_atom.h
+test_builtin.bin
+dtoa_test
+libm_test
+rempio2_test
+
+# Example artifacts
+example_stdlib
+example_stdlib.h
+
+# Extra tests
+mquickjs-extras.tar.xz
+tests/octane/
+tests/dtoa_test.c
+tests/dtoa_test.h
+tests/gay-fixed.c
+tests/gay-precision.c
+tests/gay-shortest.c
+tests/libm_test.c
+tests/rempio2_test.c
