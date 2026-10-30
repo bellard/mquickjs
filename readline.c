@@ -42,7 +42,7 @@ static void term_show_prompt2(ReadlineState *s)
     s->term_cursor_x = strlen(s->term_prompt) % s->term_width;
     s->term_cursor_pos = 0;
     s->term_esc_state = IS_NORM;
-    s->utf8_state = 0;
+    s->utf8_pos = 0;
 }
 
 static void term_show_prompt(ReadlineState *s)
@@ -713,22 +713,30 @@ static int readline_handle_char(ReadlineState *s, int ch)
    (copy paste case) */
 int readline_handle_byte(ReadlineState *s, int c)
 {
-    if (c >= 0xc0 && c < 0xf8) {
-        s->utf8_state = 1 + (c >= 0xe0) + (c >= 0xf0);
-        s->utf8_val = c & ((1 << (6 - s->utf8_state)) - 1);
-        return READLINE_RET_HANDLED;
-    }
-    if (s->utf8_state != 0) {
-        if (c >= 0x80 && c < 0xc0) {
-            s->utf8_val = (s->utf8_val << 6) | (c & 0x3F);
-            s->utf8_state--;
-            if (s->utf8_state)
-                return READLINE_RET_HANDLED;
-            c = s->utf8_val;
+    if (c < 0x80) {
+        s->utf8_pos = 0;
+        return readline_handle_char(s, c);
+    } else if (c >= 0x80 && c < 0xc0) {
+        if (s->utf8_pos != 0) {
+            s->utf8_buf[s->utf8_pos++] = c;
+            if (s->utf8_pos == s->utf8_len) {
+                size_t clen;
+                s->utf8_pos = 0;
+                /* only accept valid UTF-8 */
+                c = unicode_from_utf8(s->utf8_buf, s->utf8_len, &clen);
+                if (c >= 0) {
+                    return readline_handle_char(s, c);
+                }
+            }
         }
-        s->utf8_state = 0;
+    } else if (c < 0xf8) {
+        s->utf8_buf[0] = c;
+        s->utf8_pos = 1;
+        s->utf8_len = 2 + (c >= 0xe0) + (c >= 0xf0);
+    } else {
+        s->utf8_pos = 0;
     }
-    return readline_handle_char(s, c);
+    return READLINE_RET_HANDLED;
 }
 
 void readline_start(ReadlineState *s, const char *prompt, int is_password)

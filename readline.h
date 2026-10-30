@@ -35,9 +35,10 @@ struct ReadlineState {
     int term_cmd_buf_index; /* byte position in the command line */
     int term_cmd_buf_len; /* byte length of the command line */
     
-    uint32_t utf8_val;
     uint8_t term_cmd_updated; /* if the command line was updated */
-    uint8_t utf8_state;
+    uint8_t utf8_pos; /* for UTF-8 terminal input */
+    uint8_t utf8_len; /* for UTF-8 terminal input */
+    uint8_t utf8_buf[4]; /* for UTF-8 terminal input */
     uint8_t term_esc_state;
     int term_esc_param;
     int term_esc_param1;
