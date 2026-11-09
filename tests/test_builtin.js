@@ -126,11 +126,11 @@ function test()
     a.z = 5;
     assert(a.z_val, 5, "set");
 
-    Object.defineProperty(a, "w", {});
+    Object.defineProperty(a, "w", {configurable: true, enumerable: true, writable: true});
     assert("w" in a, true);
     a.w = 1;
     
-    Object.defineProperty(a, "w", {});
+    Object.defineProperty(a, "w", {configurable: true, enumerable: true, writable: true});
     assert(a.w, 1);
     
     a = { get z() { return 4; }, set z(val) { this.z_val = val; } };
@@ -471,6 +471,8 @@ function test_number()
     assert(+"  123   ", 123);
     assert(+"0b111", 7);
     assert(+"0o123", 83);
+
+    assert(Number("\u30007"), 7);
     
     assert(parseInt("123"), 123);
     assert(parseInt("  123r"), 123);
@@ -481,7 +483,8 @@ function test_number()
     assert(parseFloat("-Infinity"), -Infinity);
     assert(parseFloat("123.2"), 123.2);
     assert(parseFloat("123.2e3"), 123200);
-
+    assert(parseFloat("\xA0 7 \u3000"), 7);
+    
     assert((25).toExponential(), "2.5e+1");
     assert((25).toExponential(0), "3e+1");
     assert((-25).toExponential(0), "-3e+1");

@@ -4044,7 +4044,7 @@ static void build_backtrace(JSContext *ctx, JSValue error_obj,
                             const char *filename, int line_num, int col_num, int skip_level)
 {
     JSObject *p1;
-    char buf[128], *p, *buf_end, *line_start;
+    char buf[256], *p, *buf_end, *line_start;
     const char *str;
     JSValue *fp, stack_str;
     JSCStringBuf str_buf;
@@ -4263,15 +4263,50 @@ static JSValue JS_ToPropertyKey(JSContext *ctx, JSValue val)
         return JS_MakeUniqueString(ctx, val);
 }
 
-static int skip_spaces(const char *p1)
+/* c < 128 */
+static force_inline BOOL unicode_is_space_ascii(uint32_t c)
+{
+    return (c >= 0x0009 && c <= 0x000D) || (c == 0x0020);
+}
+
+static BOOL unicode_is_space_non_ascii(uint32_t c)
+{
+    return (c == 0x00A0 ||
+            c == 0x1680 ||
+            (c >= 0x2000 && c <= 0x200A) ||
+            (c >= 0x2028 && c <= 0x2029) ||
+            c == 0x202F ||
+            c == 0x205F ||
+            c == 0x3000 ||
+            c == 0xFEFF);
+}
+
+static force_inline BOOL unicode_is_space(uint32_t c)
+{
+    if (likely(c < 128)) {
+        return unicode_is_space_ascii(c);
+    } else {
+        return unicode_is_space_non_ascii(c);
+    }
+}
+
+static size_t skip_spaces(const char *p1)
 {
     const char *p = p1;
     int c;
     for(;;) {
-        c = *p;
-        if (!((c >= 0x09 && c <= 0x0d) || (c == 0x20)))
-            break;
-        p++;
+        c = (uint8_t)*p;
+        if (c < 0x80) {
+            if (!unicode_is_space_ascii(c))
+                break;
+            p++;
+        } else {
+            size_t clen;
+            c = __utf8_get((const uint8_t *)p, &clen);
+            if (!unicode_is_space_non_ascii(c))
+                break;
+            p += clen;
+        }
     }
     return p - p1;
 }
@@ -13698,33 +13733,6 @@ JSValue js_string_toLowerCase(JSContext *ctx, JSValue *this_val,
         string_buffer_putc(ctx, b, c);
     }
     return string_buffer_pop(ctx, b);
-}
-
-/* c < 128 */
-static force_inline BOOL unicode_is_space_ascii(uint32_t c)
-{
-    return (c >= 0x0009 && c <= 0x000D) || (c == 0x0020);
-}
-
-static BOOL unicode_is_space_non_ascii(uint32_t c)
-{
-    return (c == 0x00A0 ||
-            c == 0x1680 ||
-            (c >= 0x2000 && c <= 0x200A) ||
-            (c >= 0x2028 && c <= 0x2029) ||
-            c == 0x202F ||
-            c == 0x205F ||
-            c == 0x3000 ||
-            c == 0xFEFF);
-}
-
-static force_inline BOOL unicode_is_space(uint32_t c)
-{
-    if (likely(c < 128)) {
-        return unicode_is_space_ascii(c);
-    } else {
-        return unicode_is_space_non_ascii(c);
-    }
 }
 
 JSValue js_string_trim(JSContext *ctx, JSValue *this_val,
