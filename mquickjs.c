@@ -2579,11 +2579,15 @@ static JSValue JS_GetPropertyInternal(JSContext *ctx, JSValue obj, JSValue prop,
 
     for(;;) {
         if (p->class_id == JS_CLASS_ARRAY) {
+            /* in stricter mode, numeric properties are never
+               forwarded to the prototype */
             if (JS_IsInt(prop)) {
                 uint32_t idx = JS_VALUE_GET_INT(prop);
                 if (idx < p->u.array.len) {
                     JSValueArray *arr = JS_VALUE_TO_PTR(p->u.array.tab);
                     return arr->arr[idx];
+                } else {
+                    return JS_UNDEFINED;
                 }
             } else if (JS_IsNumericProperty(ctx, prop)) {
                 return JS_UNDEFINED;
@@ -2618,6 +2622,8 @@ static JSValue JS_GetPropertyInternal(JSContext *ctx, JSValue obj, JSValue prop,
                     case JS_CLASS_FLOAT64_ARRAY:
                         return JS_NewFloat64(ctx, *((double *)arr->buf + idx));
                     }
+                } else {
+                    return JS_UNDEFINED;
                 }
             } else if (JS_IsNumericProperty(ctx, prop)) {
                 return JS_UNDEFINED;
@@ -2710,6 +2716,24 @@ static BOOL JS_HasProperty(JSContext *ctx, JSValue obj, JSValue prop)
     if (p->mtag != JS_MTAG_OBJECT)
         return FALSE;
     for(;;) {
+        if (p->class_id == JS_CLASS_ARRAY) {
+            /* in stricter mode, numeric properties are never
+               forwarded to the prototype */
+            if (JS_IsInt(prop)) {
+                uint32_t idx = JS_VALUE_GET_INT(prop);
+                return (idx < p->u.array.len);
+            } else if (JS_IsNumericProperty(ctx, prop)) {
+                return FALSE;
+            }
+        } else if (p->class_id >= JS_CLASS_UINT8C_ARRAY &&
+                   p->class_id <= JS_CLASS_FLOAT64_ARRAY) {
+            if (JS_IsInt(prop)) {
+                uint32_t idx = JS_VALUE_GET_INT(prop);
+                return (idx < p->u.typed_array.len);
+            } else if (JS_IsNumericProperty(ctx, prop)) {
+                return FALSE;
+            }
+        }
         pr = find_own_property(ctx, p, prop);
         if (pr)
             return TRUE;

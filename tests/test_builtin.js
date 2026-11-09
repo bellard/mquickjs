@@ -313,6 +313,11 @@ function test_array()
     a = [ "b0", "z0", undefined, "b1", "a0", undefined, "z1", "a1", "a2"];
     a.sort(function(a, b) { return (a[0] > b[0]) - (a[0] < b[0]) } );
     assert(a.toString(), "a0,a1,a2,b0,b1,z0,z1,,");
+
+    a = ["a", "b"];
+    assert(0 in a, true);
+    assert(1 in a, true);
+    assert(2 in a, false);
 }
 
 /* non standard array behaviors */
@@ -568,6 +573,10 @@ function test_typed_array()
     a = new Uint8Array([1, 2, 3, 4]);
     a = a.subarray(1, 3);
     assert(a.toString(), "2,3");
+
+    a = new Uint8Array([1, 2, 3, 4]);
+    assert(3 in a, true);
+    assert(4 in a, false);
 }
 
 function repeat(a, n)
