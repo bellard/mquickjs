@@ -101,6 +101,27 @@ function test_closure3()
     assert(fib_func(6) === 8, "fib");
 }
 
+function test_catch_closure()
+{
+    var e = 1, fs = [], v;
+    try {
+        throw 2;
+    } catch (e) {
+        fs.push(function () { return e; });
+        fs.push(function () { return function () { return e; }; });
+        try {
+            throw 3;
+        } catch (e) {
+            fs.push(function () { return e; });
+        }
+        e = 4;
+    }
+    fs.push(function () { return e; });
+    v = fs[0]() + "," + fs[1]()() + "," + fs[2]() + "," + fs[3]() + "," + e;
+    assert(v === "4,4,3,1,1", "catch closure");
+}
+
 test_closure1();
 test_closure2();
 test_closure3();
+test_catch_closure();
