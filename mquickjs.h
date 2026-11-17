@@ -206,6 +206,7 @@ static inline JSValue JS_NewBool(int val)
 JS_BOOL JS_IsNumber(JSContext *ctx, JSValue val);
 JS_BOOL JS_IsString(JSContext *ctx, JSValue val);
 JS_BOOL JS_IsError(JSContext *ctx, JSValue val);
+JS_BOOL JS_IsObject(JSContext *ctx, JSValue val);
 JS_BOOL JS_IsFunction(JSContext *ctx, JSValue val);
 JS_BOOL JS_IsArray(JSContext *ctx, JSValue obj);
 
