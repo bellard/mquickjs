@@ -2061,6 +2061,13 @@ static JSValue JS_MakeUniqueString(JSContext *ctx, JSValue val)
         return JS_EXCEPTION;
     ctx->unique_strings = new_tab;
     arr = JS_VALUE_TO_PTR( ctx->unique_strings);
+    /* The allocation in js_is_numeric_string() can run the GC, which
+       removes the unused strings from the table, so the index found
+       by the first search can be too large. Search again for the
+       insert position. The string is not found this time either: the
+       GC only removes entries. (js_resize_value_array() holds the table
+       in a JSGCRef, so the GC keeps every entry during its allocation.) */
+    find_atom(ctx, &a, arr, ctx->unique_strings_len, val);
     memmove(&arr->arr[a + 1], &arr->arr[a],
             sizeof(arr->arr[0]) * (ctx->unique_strings_len - a));
     arr->arr[a] = val;
