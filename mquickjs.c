@@ -12242,7 +12242,14 @@ static void gc_mark_all(JSContext *ctx, BOOL keep_atoms)
 
         j = 0;
         for(i = 0; i < arr->size; i++) {
-            if (gc_mb_is_marked(arr->arr[i])) {
+            /* A string outside the heap (e.g. a string literal of loaded
+               bytecode used as a property key) is never marked, but it
+               is never freed either. It must stay in the table: an object
+               may use it as a key, and another copy of the same string
+               must be made unique to this one, not to a new one. */
+            if (gc_mb_is_marked(arr->arr[i]) ||
+                (JS_IsPtr(arr->arr[i]) &&
+                 JS_IS_ROM_PTR(ctx, JS_VALUE_TO_PTR(arr->arr[i])))) {
                 arr->arr[j++] = arr->arr[i];
             }
         }
