@@ -374,6 +374,298 @@ function test_try_catch8()
     assert(s, "xafyaf");
 }
 
+function test_try_catch9()
+{
+    var s, g_eval = (1,eval);
+
+    /* same catch variable name in the same function */
+    s = "";
+    try {
+        throw "a";
+    } catch (e) {
+        s += e;
+    }
+    try {
+        throw "b";
+    } catch (e) {
+        s += e;
+    }
+    assert(s, "ab", "catch9");
+
+    /* same catch variable name in global code */
+    s = g_eval("var s = ''; try { throw 'c'; } catch (e) { s += e; } " +
+               "try { throw 'd'; } catch (e) { s += e; } s");
+    assert(s, "cd", "catch9 global");
+}
+
+function test_try_catch10()
+{
+    var s;
+    s = "";
+    try {
+        throw "a";
+    } catch (e) {
+        try {
+            throw "b";
+        } catch (f) {
+            s += e + f;
+        }
+        try {
+            throw "c";
+        } catch (e) {
+            s += e;
+            e = "d";
+        }
+        s += e;
+    }
+    assert(s, "abca", "catch10");
+}
+
+function test_try_catch11(p)
+{
+    var v = "v", s = "";
+    try {
+        throw "a";
+    } catch (v) {
+        s += v;
+        v = "b";
+    }
+    try {
+        throw "c";
+    } catch (p) {
+        s += p;
+    }
+    try {
+        throw "d";
+    } catch (e) {
+    }
+    assert(s, "ac", "catch11");
+    assert(v, "v", "catch11 var");
+    assert(p, "p", "catch11 arg");
+    assert(typeof e, "undefined", "catch11 scope");
+    try {
+        e;
+        s = "";
+    } catch (err) {
+        s = err.name;
+    }
+    assert(s, "ReferenceError", "catch11 scope");
+}
+
+function test_try_catch12()
+{
+    var e = "v", f1, f2, f3;
+    try {
+        throw "a";
+    } catch (e) {
+        f1 = function () { return e; };
+    }
+    try {
+        throw "b";
+    } catch (e) {
+        f2 = function () { return e; };
+        try {
+            throw "c";
+        } catch (e) {
+            f3 = function () { return function () { return e; }; };
+        }
+    }
+    assert(f1() + f2() + f3()() + e, "abcv", "catch12");
+}
+
+function test_try_catch13()
+{
+    var s;
+    /* a parameter hides the name of the function expression */
+    s = (function g(g) {
+        try {
+            throw "a";
+        } catch (g) {
+        }
+        return typeof g;
+    })(1);
+    assert(s, "number", "catch13 param");
+    /* the catch variable hides the parameter in the catch block */
+    s = (function g(g) {
+        var r;
+        try {
+            throw "a";
+        } catch (g) {
+            r = typeof g + g;
+            g = "b";
+            r += g;
+        }
+        return r + g;
+    })(1);
+    assert(s, "stringab1", "catch13 catch param");
+    /* 'arguments' hides the name of the function expression */
+    s = (function arguments() { return typeof arguments; })();
+    assert(s, "object", "catch13 arguments");
+}
+
+function test_try_catch14()
+{
+    var g_eval = (1,eval), s;
+    /* 'eval' and 'arguments' are invalid catch variable names */
+    try {
+        g_eval("try { } catch (eval) { }");
+        s = "";
+    } catch (err) {
+        s = err.name;
+    }
+    assert(s, "SyntaxError", "catch14 eval");
+    try {
+        g_eval("(function () { try { } catch (arguments) { } })");
+        s = "";
+    } catch (err) {
+        s = err.name;
+    }
+    assert(s, "SyntaxError", "catch14 arguments");
+}
+
+function test_try_catch15()
+{
+    var e = "o", s, g_eval = (1,eval);
+
+    /* the catch variables hide a variable of the enclosing function */
+    s = (function () {
+        var r = e;
+        try {
+            throw "a";
+        } catch (e) {
+            r += e;
+        }
+        try {
+            throw "b";
+        } catch (e) {
+            r += e;
+        }
+        return r + e;
+    })();
+    assert(s, "oabo", "catch15 enclosing function var");
+
+    /* the catch variables hide a global variable */
+    s = g_eval("var catch15_g = 'g'; (function () {" +
+               "var r = catch15_g;" +
+               "try { throw 'c'; } catch (catch15_g) { r += catch15_g; }" +
+               "try { throw 'd'; } catch (catch15_g) { r += catch15_g; }" +
+               "return r + catch15_g; })()");
+    assert(s, "gcdg", "catch15 global var");
+
+    /* a function defined outside the catch block uses the variable of
+       the function, not the catch variable */
+    s = (function () {
+        var v = "v";
+        function get_v() {
+            return v;
+        }
+        try {
+            throw "x";
+        } catch (v) {
+            return get_v() + v;
+        }
+    })();
+    assert(s, "vx", "catch15 function outside the catch block");
+}
+
+function test_try_catch16()
+{
+    var f1, f2, f3, f4, s;
+    s = typeof e;
+    try {
+        throw "a";
+    } catch (e) {
+        f1 = function () { return e; };
+        /* a parameter of the inner function hides the catch variable */
+        f2 = function (e) { return e; };
+    }
+    try {
+        throw "b";
+    } catch (e) {
+        /* a variable of the inner function hides the catch variable,
+           even if it is declared after its use */
+        f3 = function () {
+            var g = function () { return e; };
+            var e = "c";
+            return g();
+        };
+        f4 = function () { return e; };
+    }
+    /* 'e' is declared after the catch blocks. The functions created
+       in the catch blocks still use the catch variables. */
+    var e = "d";
+    assert(s + f1() + f2("p") + f3() + f4() + e, "undefinedapcbd", "catch16");
+}
+
+/* The code of test_try_catch17 is the output of TypeScript 4.5.4
+   ('tsc --target ES5 --strict --lib es5') for the following class.
+   tsc keeps the catch variable names, so the same name appears in
+   several catch clauses of one function:
+
+class Store {
+    errors: any[] = [];
+    save(keys: string[]): string {
+        for (const k of keys) {
+            try { throw new Error(k); } catch (e) { this.errors.push((e as Error).message); }
+        }
+        try { throw new Error("x"); } catch (e) { [1].forEach(() => this.errors.push((e as Error).message)); }
+        try { throw new Error("y"); } catch ({ message }) { this.errors.push(message); }
+        try { throw new Error("z"); } catch ({ message }) { this.errors.push(message); }
+        try { throw new Error("w"); } catch { this.errors.push("-"); }
+        return this.errors.join("");
+    }
+}
+*/
+function test_try_catch17()
+{
+    var Store = /** @class */ (function () {
+        function Store() {
+            this.errors = [];
+        }
+        Store.prototype.save = function (keys) {
+            var _this = this;
+            for (var _i = 0, keys_1 = keys; _i < keys_1.length; _i++) {
+                var k = keys_1[_i];
+                try {
+                    throw new Error(k);
+                }
+                catch (e) {
+                    this.errors.push(e.message);
+                }
+            }
+            try {
+                throw new Error("x");
+            }
+            catch (e) {
+                [1].forEach(function () { return _this.errors.push(e.message); });
+            }
+            try {
+                throw new Error("y");
+            }
+            catch (_a) {
+                var message = _a.message;
+                this.errors.push(message);
+            }
+            try {
+                throw new Error("z");
+            }
+            catch (_b) {
+                var message = _b.message;
+                this.errors.push(message);
+            }
+            try {
+                throw new Error("w");
+            }
+            catch (_c) {
+                this.errors.push("-");
+            }
+            return this.errors.join("");
+        };
+        return Store;
+    }());
+    assert(new Store().save(["a", "b"]), "abxyz-", "catch17");
+}
+
 test_while();
 test_while_break();
 test_do_while();
@@ -393,3 +685,12 @@ test_try_catch5();
 test_try_catch6();
 test_try_catch7();
 test_try_catch8();
+test_try_catch9();
+test_try_catch10();
+test_try_catch11("p");
+test_try_catch12();
+test_try_catch13();
+test_try_catch14();
+test_try_catch15();
+test_try_catch16();
+test_try_catch17();
