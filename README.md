@@ -150,8 +150,23 @@ Always prefer using `for of` instead which is supported with arrays:
   cannot contain getter/setters and properties directly created in it
   are not visible as global variables in the executing script.
 
-- The variable associated with the `catch` keyword is a normal
-  variable.
+- The variable associated with the `catch` keyword is only visible in
+  its catch block, with the following limitations:
+
+    - There is a single variable per catch clause and function
+      call. Hence functions created in the catch block during
+      different loop iterations share the same variable.
+
+    - Every function created in the catch block references the catch
+      variable, even if it does not use it. Hence such a function
+      keeps the caught value alive as long as the function exists.
+
+    - A `var` declaration with the name of the catch variable inside
+      the catch block (e.g. `catch (e) { var e = 1; }`) does not
+      declare a variable in the enclosing function. After the catch
+      block, `e` refers to a global variable. In global code, the
+      initializer assigns the global variable `e` instead of the
+      catch variable.
 
 - Direct `eval` is not supported. Only indirect (=global) `eval` is
   supported.

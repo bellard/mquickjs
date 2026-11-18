@@ -8973,6 +8973,40 @@ static int add_var(JSParseState *s, JSValue name)
     return s->local_vars_len - 1;
 }
 
+/* end of the catch block: each function defined in it (starting from
+   the constant pool index 'cpool_pos') gets a reference to the catch
+   variable, whether or not it uses the catch variable. These functions
+   are compiled after the current function, when the catch variable can
+   no longer be found by its name. Then the catch variable is hidden
+   from the rest of the function. */
+static void close_catch_var(JSParseState *s, int var_idx, int cpool_pos)
+{
+    JSFunctionBytecode *b, *b1;
+    JSValueArray *arr;
+    JSValue func, name;
+    
+    for(; cpool_pos < s->cpool_len; cpool_pos++) {
+        b = JS_VALUE_TO_PTR(s->cur_func);
+        arr = JS_VALUE_TO_PTR(b->cpool);
+        func = arr->arr[cpool_pos];
+        if (!JS_IsPtr(func))
+            continue;
+        b1 = JS_VALUE_TO_PTR(func);
+        if (b1->mtag != JS_MTAG_FUNCTION_BYTECODE)
+            continue;
+        arr = JS_VALUE_TO_PTR(b->vars);
+        name = arr->arr[var_idx];
+        /* an inner catch variable of the same name has precedence */
+        if (find_func_ext_var(s, func, name) < 0) {
+            add_func_ext_var(s, func, name, (JS_VARREF_KIND_VAR << 16) |
+                             (var_idx - b->arg_count));
+        }
+    }
+    b = JS_VALUE_TO_PTR(s->cur_func);
+    arr = JS_VALUE_TO_PTR(b->vars);
+    arr->arr[var_idx] = JS_NULL;
+}
+
 static void get_lvalue(JSParseState *s, int *popcode,
                        int *pvar_idx, JSSourcePos *psource_pos, BOOL keep)
 {
@@ -10881,7 +10915,7 @@ static int js_parse_statement(JSParseState *s, int state, int dummy_param)
             
             if (s->token.val == TOK_CATCH) {
                 JSValue label_catch2;
-                int var_idx;
+                int var_idx, cpool_pos, hidden_idx;
                 JSValue name;
 
                 label_catch2 = new_label(s);
@@ -10891,10 +10925,19 @@ static int js_parse_statement(JSParseState *s, int state, int dummy_param)
                 if (s->token.val != TOK_IDENT)
                     js_parse_error(s, "identifier expected");
                 name = s->token.value;
-                /* XXX: the local scope is not implemented, so we add
-                   a normal variable */
-                if (find_var(s, name) >= 0 || find_ext_var(s, name) >= 0) {
-                    js_parse_error(s, "catch variable already exists");
+                if (name == js_get_atom(s->ctx, JS_ATOM_eval) ||
+                    name == js_get_atom(s->ctx, JS_ATOM_arguments)) {
+                    js_parse_error(s, "invalid catch variable name");
+                }
+                /* the catch variable is a new local variable which is
+                   only visible in the catch block. A variable of the
+                   same name is hidden during the catch block so that
+                   each name appears only once in the visible variables. */
+                hidden_idx = find_var(s, name);
+                if (hidden_idx >= 0) {
+                    JSFunctionBytecode *b = JS_VALUE_TO_PTR(s->cur_func);
+                    JSValueArray *arr = JS_VALUE_TO_PTR(b->vars);
+                    arr->arr[hidden_idx] = JS_NULL;
                 }
                 var_idx = add_var(s, name);
                 next_token(s);
@@ -10912,11 +10955,21 @@ static int js_parse_statement(JSParseState *s, int state, int dummy_param)
                 be = push_break_entry(s, JS_NULL, LABEL_NONE, LABEL_NONE, 1);
                 be->label_finally = label_finally;
                 
+                cpool_pos = s->cpool_len;
                 PARSE_PUSH_VAL(s, label_end);
                 PARSE_PUSH_VAL(s, label_catch2);
-                PARSE_CALL(s, 9, js_parse_block, 0);
+                PARSE_CALL_SAVE3(s, 9, js_parse_block, 0, var_idx, cpool_pos, hidden_idx);
                 PARSE_POP_VAL(s, label_catch2);
                 PARSE_POP_VAL(s, label_end);
+
+                /* restore the hidden variable. The name is read again
+                   because the GC may have moved it. */
+                if (hidden_idx >= 0) {
+                    JSFunctionBytecode *b = JS_VALUE_TO_PTR(s->cur_func);
+                    JSValueArray *arr = JS_VALUE_TO_PTR(b->vars);
+                    arr->arr[hidden_idx] = arr->arr[var_idx];
+                }
+                close_catch_var(s, var_idx, cpool_pos);
 
                 be = VALUE_TO_SP(s->ctx, s->top_break);
                 label_finally = be->label_finally;
@@ -11211,7 +11264,10 @@ static void js_parse_function(JSParseState *s)
 
     /* XXX: initialize the function name */
     b = JS_VALUE_TO_PTR(s->cur_func);
-    if (b->has_local_func_name) {
+    /* a parameter or 'arguments' of the same name hides the function
+       name. Not adding the function name variable ensures that each
+       name appears only once in the local variables. */
+    if (b->has_local_func_name && find_var(s, b->func_name) < 0) {
         int var_idx;
         /* XXX: */
         var_idx = add_var(s, b->func_name);
@@ -11497,6 +11553,10 @@ static void resolve_var_refs(JSParseState *s, JSValue *pfunc, JSValue *pparent_f
     for(i = 0; i < ext_vars_len; i++) {
         b = JS_VALUE_TO_PTR(*pfunc);
         ext_vars = JS_VALUE_TO_PTR(b->ext_vars);
+        decl = JS_VALUE_GET_INT(ext_vars->arr[2 * i + 1]);
+        /* catch variables are already resolved */
+        if ((decl >> 16) != JS_VARREF_KIND_GLOBAL)
+            continue;
         var_name = ext_vars->arr[2 * i];
         var_idx = find_func_var(ctx, *pparent_func, var_name);
         if (var_idx >= 0) {
