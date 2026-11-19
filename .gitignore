@@ -1,0 +1,16 @@
+*.o
+*.d
+*.exe
+*~
+test_builtin.bin
+mqjs
+mqjs_stdlib
+mqjs_stdlib.h
+mquickjs_build_atoms
+mquickjs_atom.h
+mqjs_example
+example
+example_stdlib
+example_stdlib.h
+dtoa_test
+libm_test
