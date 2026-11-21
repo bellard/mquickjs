@@ -2041,7 +2041,7 @@ static JSValue JS_MakeUniqueString(JSContext *ctx, JSValue val)
         }
     }
     
-    arr = JS_VALUE_TO_PTR( ctx->unique_strings);
+    arr = JS_VALUE_TO_PTR(ctx->unique_strings);
     val1 = find_atom(ctx, &a, arr, ctx->unique_strings_len, val); 
     if (!JS_IsNull(val1))
         return val1;
@@ -2051,6 +2051,24 @@ static JSValue JS_MakeUniqueString(JSContext *ctx, JSValue val)
     JS_POP_VALUE(ctx, val);
     if (is_numeric < 0)
         return JS_EXCEPTION;
+
+    /* if it is a ROM string, we must move it to RAM to set
+       'is_unique' to 1. XXX: make more or all ROM strings unique ? */
+    if (JS_IS_ROM_PTR(ctx, JS_VALUE_TO_PTR(val))) {
+        JSString *p1;
+        JS_PUSH_VALUE(ctx, val);
+        p1 = js_malloc(ctx, sizeof(JSString) + p->len + 1, JS_MTAG_STRING);
+        JS_POP_VALUE(ctx, val);
+        if (!p1)
+            return JS_EXCEPTION;
+        p = JS_VALUE_TO_PTR(val);
+        p1->is_unique = FALSE; /* set later */
+        p1->is_numeric = FALSE; /* set later */
+        p1->is_ascii = p->is_ascii;
+        p1->len = p->len;
+        memcpy(p1->buf, p->buf, p->len + 1);
+        val = JS_VALUE_FROM_PTR(p1);
+    }
     
     /* not found: add it in the table */
     JS_PUSH_VALUE(ctx, val);
@@ -2061,6 +2079,10 @@ static JSValue JS_MakeUniqueString(JSContext *ctx, JSValue val)
         return JS_EXCEPTION;
     ctx->unique_strings = new_tab;
     arr = JS_VALUE_TO_PTR( ctx->unique_strings);
+    /* 'a' may be modified if the GC removes entries in
+       ctx->unique_strings */
+    val1 = find_atom(ctx, &a, arr, ctx->unique_strings_len, val); 
+    assert(JS_IsNull(val1));
     memmove(&arr->arr[a + 1], &arr->arr[a],
             sizeof(arr->arr[0]) * (ctx->unique_strings_len - a));
     arr->arr[a] = val;
@@ -8841,6 +8863,8 @@ static void js_emit_push_const(JSParseState *s, JSValue val)
         || JS_IsShortFloat(val)
 #endif
         ) {
+        /* XXX: could make unique at least the small strings to save
+           memory */
         /* We use a constant pool to avoid scanning the bytecode
            during the GC. XXX: is it a good choice ? */
         idx = cpool_add(s, val);
